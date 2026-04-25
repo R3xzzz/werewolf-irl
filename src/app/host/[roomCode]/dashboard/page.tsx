@@ -1,0 +1,307 @@
+"use client";
+
+import { use, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "../../../../components/ui/Button";
+import { useRoomState } from "../../../../hooks/useRoomState";
+import { usePlayers } from "../../../../hooks/usePlayers";
+import { useVotes } from "../../../../hooks/useVotes";
+import { useLangStore } from "../../../../store/useLangStore";
+import { supabase } from "../../../../lib/supabase";
+import { getNightActionRoles, ROLES } from "../../../../lib/roles";
+
+export default function HostDashboardPage({ params }: { params: Promise<{ roomCode: string }> }) {
+  const resolvedParams = use(params);
+  const roomCode = resolvedParams.roomCode.toUpperCase();
+  const router = useRouter();
+
+  const { lang, toggleLang } = useLangStore();
+  const { room, loading: roomLoading } = useRoomState(roomCode);
+  const { players, loading: playersLoading } = usePlayers(room?.id);
+  const { votes } = useVotes(room?.id);
+
+  const [nightStep, setNightStep] = useState(-1); // -1 = Everyone close eyes
+
+  // Derived state
+  const actualPlayers = players.filter(p => !p.is_host);
+  const alivePlayers = actualPlayers.filter(p => p.alive);
+  
+  // Roles present in this specific game session
+  const activeRoleIds = Array.from(new Set(actualPlayers.map(p => p.role)));
+  
+  // Filter the central Night Action Roles down to only the ones actually in THIS game
+  const gameNightRoles = getNightActionRoles().filter(r => activeRoleIds.includes(r.id));
+
+  const changePhase = async (newPhase: string, winner?: string) => {
+     if(!room) return;
+     if (newPhase === 'voting') {
+        // Clear old votes for this room before opening voting anew
+        await supabase.from('votes').delete().eq('room_id', room.id);
+     }
+     
+     const updates: any = { phase: newPhase };
+     if (winner) {
+         updates.settings = { ...(room.settings || {}), winner };
+     }
+     
+     if (newPhase === 'lobby') {
+         // Reset players to default state for a new game
+         updates.settings = { ...room.settings, winner: null }; // clear winner
+         await supabase.from('players').update({ alive: true, role: 'unassigned', action_target_id: null }).eq('room_id', room.id);
+     }
+     
+     await supabase.from('rooms').update(updates).eq('id', room.id);
+     
+     if (newPhase === 'lobby') {
+        router.push(`/host/${roomCode}/lobby`);
+     }
+  };
+
+  const killPlayer = async (playerId: string) => {
+     await supabase.from('players').update({ alive: false }).eq('id', playerId);
+  };
+
+  // Auto Win Condition Checker
+  useEffect(() => {
+     if (!room || room.phase === 'ended' || room.phase === 'lobby') return;
+     
+     const aliveWolves = alivePlayers.filter(p => ROLES[p.role]?.team === 'werewolf');
+     const aliveVillagersAndNeutrals = alivePlayers.filter(p => ROLES[p.role]?.team !== 'werewolf');
+
+     // We only auto-end if there was a game actually populated with wolves to prevent instant empty room finishes
+     const totalWolves = actualPlayers.filter(p => ROLES[p.role]?.team === 'werewolf');
+     if (totalWolves.length === 0) return;
+
+     if (aliveWolves.length === 0) {
+        changePhase('ended', 'village');
+     } else if (aliveWolves.length >= aliveVillagersAndNeutrals.length) {
+        changePhase('ended', 'werewolf');
+     }
+  }, [alivePlayers.length, room?.phase]);
+
+  useEffect(() => {
+     // Failsafe auto-redirect if phase is externally set to lobby
+     if (room?.phase === 'lobby') {
+        router.push(`/host/${roomCode}/lobby`);
+     }
+  }, [room?.phase, roomCode, router]);
+
+  // Only consider votes from players who are currently alive
+  const validVotes = votes.filter(vote => {
+     const voter = players.find(p => p.id === vote.voter_id);
+     return voter && voter.alive;
+  });
+
+  // Tally votes helper
+  const groupedVotes = Array.from(
+     validVotes.reduce((acc, vote) => {
+        if (!acc.has(vote.target_id)) acc.set(vote.target_id, []);
+        const voter = players.find(p => p.id === vote.voter_id);
+        if (voter && voter.alive) acc.get(vote.target_id)!.push(voter.name);
+        return acc;
+     }, new Map<string, string[]>())
+  ).map(([targetId, voters]) => {
+     const target = players.find(p => p.id === targetId);
+     return { target, voters };
+  }).sort((a, b) => b.voters.length - a.voters.length);
+
+  // The Assistant view for the Night
+  const renderNightAssistant = () => {
+    if (nightStep === -1) {
+       return (
+         <div className="text-center p-8">
+            <h3 className="text-2xl font-serif text-wolf-100 mb-4">{lang === 'en' ? 'Preparation' : 'Persiapan'}</h3>
+            <p className="text-xl text-slate-300 mb-8">{lang === 'en' ? '"Everyone, close your eyes."' : '"Semuanya, tutup mata kalian."'}</p>
+            <Button size="lg" onClick={() => {
+              setNightStep(0);
+              changePhase('night');
+            }}>{lang === 'en' ? 'Begin Night Order' : 'Mulai Malam'}</Button>
+         </div>
+       );
+    }
+
+    if (nightStep >= gameNightRoles.length) {
+       return (
+         <div className="text-center p-8">
+            <h3 className="text-2xl font-serif text-moon-100 mb-4">{lang === 'en' ? 'Dawn Approaches' : 'Pagi Telah Tiba'}</h3>
+            <p className="text-xl text-slate-300 mb-8">{lang === 'en' ? '"Everyone, wake up."' : '"Semuanya, bangun."'}</p>
+            <Button size="lg" onClick={() => {
+              setNightStep(-1);
+              changePhase('day_transition');
+              setTimeout(() => changePhase('day'), 3000); // Cinematic delay
+            }}>{lang === 'en' ? 'Start Day Phase' : 'Mulai Siang'}</Button>
+         </div>
+       );
+    }
+
+    const currentRoleAction = gameNightRoles[nightStep];
+    const rolePlayers = actualPlayers.filter(p => p.role === currentRoleAction.id && p.alive);
+
+    return (
+       <div className="text-center p-8 relative">
+          <h3 className="text-3xl font-serif text-white mb-2">{lang === 'en' ? currentRoleAction.name : currentRoleAction.name_id}</h3>
+          
+          {rolePlayers.length === 0 ? (
+             <div className="text-slate-500 italic my-6">
+               {lang === 'en' ? '(Role is in game but player is dead. Wait a few seconds to pretend they are acting, then skip.)' : '(Pemain peran ini udah mati. Diem aja beberapa detik buat ngecoh, terus skip.)'}
+             </div>
+          ) : (
+             <div className="my-6">
+                <p className="text-xl text-moon-200 mb-4">"{lang === 'en' ? currentRoleAction.name : currentRoleAction.name_id}s, {lang === 'en' ? 'wake up."' : 'bangun."'}</p>
+                <div className="bg-forest-900 p-4 rounded-lg border border-white/5 inline-block text-left mb-4">
+                  <h4 className="text-sm text-slate-400 mb-2">{lang === 'en' ? 'Players with this role:' : 'Pemain di peran ini:'}</h4>
+                  <ul>
+                    {rolePlayers.map(p => <li key={p.id} className="text-white">{p.name}</li>)}
+                  </ul>
+                </div>
+                <p className="text-lg text-slate-300">{lang === 'en' ? currentRoleAction.description : currentRoleAction.desc_id}</p>
+             </div>
+          )}
+
+          <div className="mt-8">
+             <Button variant="secondary" size="lg" onClick={() => setNightStep(prev => prev + 1)}>
+               {lang === 'en' ? 'Next Role' : 'Lanjut'}
+             </Button>
+          </div>
+       </div>
+    );
+  };
+
+  if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (!room) return <div>Room not found</div>;
+
+  return (
+    <div className="min-h-screen bg-black text-white p-4 md:p-8 flex flex-col items-center">
+      
+      {/* Header Info */}
+      <div className="w-full max-w-5xl flex justify-between items-center mb-8 bg-forest-950 p-4 rounded-xl border border-white/10">
+         <div className="flex items-center gap-4">
+           <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
+              {lang.toUpperCase()}
+           </button>
+           <div>
+             <span className="text-slate-400 text-sm">{lang === 'en' ? 'Phase:' : 'Fase:'}</span>
+             <span className="ml-2 font-bold uppercase tracking-widest text-moon-400">{room.phase.replace('_', ' ')}</span>
+           </div>
+         </div>
+         <div className="text-right">
+           <span className="text-slate-400 text-sm">{lang === 'en' ? 'Alive:' : 'Sisa:'}</span>
+           <span className="ml-2 font-bold text-lg">{alivePlayers.length}/{actualPlayers.length}</span>
+         </div>
+      </div>
+
+      <div className="w-full max-w-5xl grid md:grid-cols-3 gap-6">
+         
+         {/* Left Col: Player List Admin */}
+         <div className="md:col-span-1 glass-panel rounded-2xl p-4 flex flex-col max-h-[80vh]">
+            <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/10 pb-2">{lang === 'en' ? 'Master Roster' : 'Pemain'}</h3>
+            <ul className="space-y-2 overflow-y-auto flex-1 pr-2">
+               {actualPlayers.map((player) => (
+                 <li key={player.id} className={`p-3 rounded-md flex flex-col text-sm ${player.alive ? 'bg-forest-900 border border-white/5' : 'bg-wolf-950/20 opacity-50 border border-wolf-500/20'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-bold text-white">{player.name}</span>
+                      {player.alive ? (
+                         <button onClick={() => killPlayer(player.id)} className="text-[10px] uppercase font-bold text-wolf-400 hover:text-white bg-wolf-950 hover:bg-wolf-700 border border-wolf-800/50 px-2 py-1 rounded transition-colors">{lang === 'en' ? 'Eliminate' : 'Kick'}</button>
+                      ) : (
+                         <span className="text-xs text-wolf-600 font-bold uppercase tracking-widest">{lang === 'en' ? 'Dead' : 'Mati'}</span>
+                      )}
+                    </div>
+                    {player.role && player.role !== 'unassigned' && (
+                       <div className="text-moon-400 text-xs">Role: {lang === 'en' ? ROLES[player.role]?.name : ROLES[player.role]?.name_id}</div>
+                    )}
+                 </li>
+               ))}
+            </ul>
+         </div>
+
+         {/* Main Admin Area */}
+         <div className="md:col-span-2 glass-panel rounded-2xl flex flex-col h-full">
+            
+            {/* Top Toolbar */}
+            <div className="p-4 border-b border-white/10 flex justify-center gap-2 flex-wrap">
+               <Button variant={room.phase.includes('night') ? 'primary' : 'secondary'} size="sm" onClick={() => changePhase('night_transition')}>{lang === 'en' ? 'Start Night' : 'Malam'}</Button>
+               <Button variant={room.phase === 'day' ? 'primary' : 'secondary'} size="sm" onClick={() => changePhase('day')}>{lang === 'en' ? 'Start Day' : 'Siang'}</Button>
+               <Button variant={room.phase === 'voting' ? 'primary' : 'secondary'} size="sm" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Voting' : 'Voting'}</Button>
+               <Button variant="danger" size="sm" onClick={() => changePhase('ended')}>{lang === 'en' ? 'End Game' : 'Akhiri'}</Button>
+            </div>
+
+            {/* Smart Assistant View */}
+            <div className="flex-1 flex flex-col p-6 min-h-[400px]">
+               {room.phase.includes('night') && renderNightAssistant()}
+               
+               {room.phase === 'day' && (
+                 <div className="flex-1 flex flex-col items-center justify-center text-center">
+                   <h3 className="text-3xl font-serif text-moon-200 mb-4">{lang === 'en' ? 'Day Phase' : 'Siang Hari'}</h3>
+                   <p className="text-lg text-slate-400 mb-8">{lang === 'en' ? 'Let the village discuss and debate.' : 'Biarin warga diskusi buat cari tau siapa serigalanya.'}</p>
+                   <Button size="lg" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Open Voting' : 'Buka Voting'}</Button>
+                 </div>
+               )}
+
+               {room.phase === 'voting' && (
+                 <div className="flex-1 flex flex-col max-w-lg w-full mx-auto">
+                   <div className="text-center mb-6">
+                     <h3 className="text-3xl font-serif text-moon-200 mb-1">{lang === 'en' ? 'Live Vote Tally' : 'Hasil Voting'}</h3>
+                     <p className="text-sm text-slate-400">{lang === 'en' ? 'Total votes cast:' : 'Total Suara Masuk:'} {validVotes.length} / {alivePlayers.length}</p>
+                   </div>
+                   
+                   {validVotes.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center text-slate-500 italic">
+                        {lang === 'en' ? 'Waiting for players to vote...' : 'Lagi nunggu pada milih...'}
+                      </div>
+                   ) : (
+                      <div className="flex-1 overflow-y-auto space-y-4">
+                        {groupedVotes.map(({ target, voters }) => (
+                           <div key={target?.id || Math.random()} className="bg-forest-900 border border-white/10 p-4 rounded-xl flex items-center justify-between">
+                              <div>
+                                <h4 className="text-xl font-bold text-white mb-1"><span className="text-wolf-400 mr-2">{voters.length}</span> {target?.name || 'Unknown'}</h4>
+                                <p className="text-xs text-slate-400">Voters: {voters.join(', ')}</p>
+                              </div>
+                              {target?.alive && (
+                                <button 
+                                  onClick={() => killPlayer(target.id)} 
+                                  className="ml-4 bg-wolf-950 text-wolf-400 border border-wolf-500/50 hover:bg-wolf-900 px-4 py-2 rounded text-sm font-bold transition-colors uppercase tracking-widest"
+                                >
+                                  {lang === 'en' ? 'Eliminate' : 'Kick'}
+                                </button>
+                              )}
+                           </div>
+                        ))}
+                      </div>
+                   )}
+                 </div>
+               )}
+
+               {room.phase === 'ended' && (
+                 <div className="flex-1 flex flex-col items-center justify-center text-center">
+                   <h3 className="text-4xl font-serif mb-4 text-white">Game Over</h3>
+                   {room.settings?.winner === 'village' && (
+                      <p className="text-2xl text-emerald-400 mb-8 uppercase tracking-widest font-bold">{lang === 'en' ? 'The Village Wins' : 'Warga Menang!'}</p>
+                   )}
+                   {room.settings?.winner === 'werewolf' && (
+                      <p className="text-2xl text-wolf-500 mb-8 uppercase tracking-widest font-bold">{lang === 'en' ? 'The Werewolves Win' : 'Serigala Menang!'}</p>
+                   )}
+                   
+                   <p className="text-sm text-slate-400 max-w-sm mb-6">
+                      {lang === 'en' ? 'Return to the Lobby to restart everything and shuffle new roles for the exact same players!' : 'Balik ke lobby buat ngacak role baru ke pemain yang sama!'}
+                   </p>
+                   <div className="flex gap-4 items-center justify-center">
+                     <Button size="lg" onClick={() => changePhase('lobby')}>
+                        {lang === 'en' ? 'Play Again (Reset Room)' : 'Main Lagi (Reset)'}
+                     </Button>
+                     <Button variant="danger" size="lg" onClick={async () => {
+                        // Optional: we could delete the room here, but leaving it abandoned is fine for DB triggers later.
+                        router.push('/');
+                     }}>
+                        {lang === 'en' ? 'Drop (Main Menu)' : 'Keluar Berhenti'}
+                     </Button>
+                   </div>
+                 </div>
+               )}
+            </div>
+
+         </div>
+      </div>
+    </div>
+  );
+}

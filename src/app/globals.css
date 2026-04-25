@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: var(--font-inter), "Inter", "San Francisco", "Helvetica Neue", sans-serif;
+  --font-serif: var(--font-cinzel), "Cinzel", "Georgia", serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Cinematic Theme Colors */
+  --color-wolf-50: #fef2f2;
+  --color-wolf-100: #fee2e2;
+  --color-wolf-500: #ef4444;
+  --color-wolf-600: #dc2626;
+  --color-wolf-800: #991b1b;
+  --color-wolf-900: #7f1d1d;
+  --color-wolf-950: #450a0a;
+
+  --color-moon-50: #f5f3ff;
+  --color-moon-200: #ddd6fe;
+  --color-moon-400: #a78bfa;
+  --color-moon-800: #5b21b6;
+  --color-moon-900: #4c1d95;
+
+  --color-forest-900: #0f172a;
+  --color-forest-950: #020617;
+
+  --animate-fade-in: fade-in 0.5s ease-out;
+  --animate-fade-out: fade-out 0.5s ease-out;
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/*
+  The default theme layout.
+*/
+:root {
+  --background: #ffffff;
+  --foreground: #020617;
+}
+
+.dark {
+  --background: #020617; /* forest-950 */
+  --foreground: #f8fafc; /* slate-50 */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #020617;
+    --foreground: #f8fafc;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  /* Prevent scroll bouncing on mobile to feel like native app */
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Custom Utilities */
+@utility glass-panel {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+@utility glass-panel-active {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 15px rgba(167, 139, 250, 0.1);
+}
+
+@utility preserve-3d {
+  transform-style: preserve-3d;
+}
+
+@utility backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+@utility perspective-1000 {
+  perspective: 1000px;
+}
