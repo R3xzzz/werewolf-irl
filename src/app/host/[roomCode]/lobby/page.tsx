@@ -8,6 +8,7 @@ import { useRoomState } from "../../../../hooks/useRoomState";
 import { usePlayers } from "../../../../hooks/usePlayers";
 import { supabase } from "../../../../lib/supabase";
 import { getAutoBalancedRoles, GameMode } from "../../../../lib/gameLogic";
+import { getAllRoles } from "../../../../lib/roles";
 
 export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: string }> }) {
   const resolvedParams = use(params);
@@ -19,6 +20,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mode, setMode] = useState<GameMode>('casual');
+  const [selectedCustomRoles, setSelectedCustomRoles] = useState<string[]>([]);
   const [starting, setStarting] = useState(false);
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
     try {
       // 1. Get non-host players
       const activePlayers = players.filter(p => !p.is_host);
-      const rolesToAssign = getAutoBalancedRoles(activePlayers.length, mode);
+      const rolesToAssign = getAutoBalancedRoles(activePlayers.length, mode, selectedCustomRoles);
 
       // 2. Assign Roles to Players
       for (let i = 0; i < activePlayers.length; i++) {
@@ -142,12 +144,41 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
                     <option value="casual">Casual (Simple beginner roles)</option>
                     <option value="competitive">Competitive (Standard balanced)</option>
                     <option value="chaos">Chaos (Fun random roles)</option>
+                    <option value="custom">Custom (Select Roles)</option>
                   </select>
                 </div>
                 
                 <p className="text-xs text-slate-500 leading-tight">
                   The system will automatically assign balanced roles based on the {actualPlayers.length} joined players.
                 </p>
+
+                {mode === 'custom' && (
+                  <div className="mt-4">
+                     <p className="text-sm text-slate-400 mb-2 block">Available Roles</p>
+                     <div className="max-h-48 overflow-y-auto bg-forest-900/50 border border-white/10 rounded-md p-2 space-y-2">
+                        {getAllRoles().filter(r => r.id !== 'villager').map(role => {
+                           const isChecked = selectedCustomRoles.includes(role.id);
+                           return (
+                             <label key={role.id} className="flex items-center gap-3 cursor-pointer group">
+                               <input 
+                                 type="checkbox" 
+                                 className="w-4 h-4 rounded border-white/20 bg-forest-950 text-moon-400 focus:ring-moon-400 focus:ring-offset-forest-900"
+                                 checked={isChecked}
+                                 onChange={(e) => {
+                                    if (e.target.checked) setSelectedCustomRoles(prev => [...prev, role.id]);
+                                    else setSelectedCustomRoles(prev => prev.filter(id => id !== role.id));
+                                 }}
+                               />
+                               <span className={`text-sm ${isChecked ? 'text-white' : 'text-slate-400'} group-hover:text-moon-200 transition-colors`}>
+                                 {role.name}
+                               </span>
+                             </label>
+                           )
+                        })}
+                     </div>
+                     <p className="text-xs text-slate-500 mt-2">Villagers are automatically added to fill empty slots.</p>
+                  </div>
+                )}
              </div>
 
              <Button 

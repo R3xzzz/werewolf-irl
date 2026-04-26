@@ -1,10 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Button } from "../components/ui/Button";
+import { RulesModal } from "../components/RulesModal";
 
 export default function Home() {
+  const [rulesOpen, setRulesOpen] = useState(false);
+
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
       {/* Dynamic Background */}
@@ -41,7 +45,13 @@ export default function Home() {
           <Button asChild variant="secondary" size="lg" className="w-full h-14 text-lg">
             <Link href="/host/create">Create Room</Link>
           </Button>
+
+          <Button variant="ghost" size="lg" className="w-full text-slate-300 hover:text-white mt-4" onClick={() => setRulesOpen(true)}>
+            How to Play & Roles
+          </Button>
         </motion.div>
+        
+        <RulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
         
         <div className="mt-12 text-center text-sm text-slate-500 max-w-[250px]">
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mb-4">

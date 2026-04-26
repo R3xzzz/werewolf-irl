@@ -1,11 +1,11 @@
 import { ROLES } from './roles';
 
-export type GameMode = 'casual' | 'chaos' | 'competitive';
+export type GameMode = 'casual' | 'chaos' | 'competitive' | 'custom';
 
 /**
  * Returns an array of role IDs balanced for the number of players and mode.
  */
-export function getAutoBalancedRoles(playerCount: number, mode: GameMode = 'casual'): string[] {
+export function getAutoBalancedRoles(playerCount: number, mode: GameMode = 'casual', customRoles: string[] = []): string[] {
   let roles: string[] = [];
 
   // Minimum players supported for a somewhat decent game is 4
@@ -18,8 +18,45 @@ export function getAutoBalancedRoles(playerCount: number, mode: GameMode = 'casu
     return roles.slice(0, playerCount);
   }
 
-  // Base logic for Werewolf counts (rough standard: 1 wolf per 4 players)
   const wolfCount = Math.max(1, Math.floor(playerCount / 4));
+
+  if (mode === 'custom' && customRoles.length > 0) {
+     // Separate chosen roles into wolves and others
+     const chosenWolves = customRoles.filter(r => ROLES[r]?.team === 'werewolf');
+     const chosenOthers = customRoles.filter(r => ROLES[r]?.team !== 'werewolf' && r !== 'villager');
+     
+     // Add Wolves from the custom pool
+     for (let i = 0; i < wolfCount; i++) {
+        if (chosenWolves.length > 0) {
+           roles.push(chosenWolves[i % chosenWolves.length]);
+        } else {
+           roles.push('werewolf'); // Fallback if no wolves selected
+        }
+     }
+
+     // Add non-wolf custom roles
+     let addedMasons = 0;
+     for (const r of chosenOthers) {
+        if (roles.length < playerCount) {
+           roles.push(r);
+           if (r === 'mason') addedMasons++;
+        }
+     }
+     
+     // Masons should ideally be at least 2
+     if (addedMasons === 1 && roles.length < playerCount) {
+        roles.push('mason');
+     }
+
+     // Fill remainder with Villagers
+     while (roles.length < playerCount) {
+        roles.push('villager');
+     }
+
+     return roles.sort(() => 0.5 - Math.random());
+  }
+  
+  // Base logic for Werewolf counts (rough standard: 1 wolf per 4 players)
   
   // Add Wolves
   if (mode === 'chaos' && playerCount >= 8) {
@@ -39,8 +76,6 @@ export function getAutoBalancedRoles(playerCount: number, mode: GameMode = 'casu
 
   // Add other roles based on mode and player count
   const remainingSlots = playerCount - roles.length;
-  let specialVillageCount = 0;
-  let neutralCount = 0;
 
   if (remainingSlots > 0) {
     if (mode === 'casual') {

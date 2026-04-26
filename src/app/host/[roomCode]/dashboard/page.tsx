@@ -10,6 +10,7 @@ import { useVotes } from "../../../../hooks/useVotes";
 import { useLangStore } from "../../../../store/useLangStore";
 import { supabase } from "../../../../lib/supabase";
 import { getNightActionRoles, ROLES } from "../../../../lib/roles";
+import { RulesModal } from "../../../../components/RulesModal";
 
 export default function HostDashboardPage({ params }: { params: Promise<{ roomCode: string }> }) {
   const resolvedParams = use(params);
@@ -22,6 +23,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
   const { votes } = useVotes(room?.id);
 
   const [nightStep, setNightStep] = useState(-1); // -1 = Everyone close eyes
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   // Derived state
   const actualPlayers = players.filter(p => !p.is_host);
@@ -180,6 +182,9 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
            <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
               {lang.toUpperCase()}
            </button>
+           <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">
+              i
+           </button>
            <div>
              <span className="text-slate-400 text-sm">{lang === 'en' ? 'Phase:' : 'Fase:'}</span>
              <span className="ml-2 font-bold uppercase tracking-widest text-moon-400">{room.phase.replace('_', ' ')}</span>
@@ -191,10 +196,10 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          </div>
       </div>
 
-      <div className="w-full max-w-5xl grid md:grid-cols-3 gap-6">
+      <div className="w-full max-w-5xl flex flex-col md:flex-row gap-6">
          
          {/* Left Col: Player List Admin */}
-         <div className="md:col-span-1 glass-panel rounded-2xl p-4 flex flex-col max-h-[80vh]">
+         <div className="w-full md:w-1/3 order-2 md:order-1 glass-panel rounded-2xl p-4 flex flex-col max-h-[80vh]">
             <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/10 pb-2">{lang === 'en' ? 'Master Roster' : 'Pemain'}</h3>
             <ul className="space-y-2 overflow-y-auto flex-1 pr-2">
                {actualPlayers.map((player) => (
@@ -216,7 +221,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          </div>
 
          {/* Main Admin Area */}
-         <div className="md:col-span-2 glass-panel rounded-2xl flex flex-col h-full">
+         <div className="w-full md:w-2/3 order-1 md:order-2 glass-panel rounded-2xl flex flex-col h-full">
             
             {/* Top Toolbar */}
             <div className="p-4 border-b border-white/10 flex justify-center gap-2 flex-wrap">
@@ -285,16 +290,21 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                    <p className="text-sm text-slate-400 max-w-sm mb-6">
                       {lang === 'en' ? 'Return to the Lobby to restart everything and shuffle new roles for the exact same players!' : 'Balik ke lobby buat ngacak role baru ke pemain yang sama!'}
                    </p>
-                   <div className="flex gap-4 items-center justify-center">
-                     <Button size="lg" onClick={() => changePhase('lobby')}>
+                   <div className="flex flex-col gap-4 items-center justify-center">
+                     <Button size="lg" className="w-full" onClick={() => changePhase('lobby')}>
                         {lang === 'en' ? 'Play Again (Reset Room)' : 'Main Lagi (Reset)'}
                      </Button>
-                     <Button variant="danger" size="lg" onClick={async () => {
-                        // Optional: we could delete the room here, but leaving it abandoned is fine for DB triggers later.
-                        router.push('/');
-                     }}>
-                        {lang === 'en' ? 'Drop (Main Menu)' : 'Keluar Berhenti'}
-                     </Button>
+                     <div className="mt-4 text-center">
+                        <p className="text-xs text-amber-500/80 mb-2 max-w-sm">
+                          {lang === 'en' ? 'Warning: Pressing this will close the lobby for everyone.' : 'Peringatan: Menekan tombol ini akan membubarkan lobby untuk semua orang.'}
+                        </p>
+                        <Button variant="danger" size="sm" onClick={async () => {
+                           // Optional: we could delete the room here, but leaving it abandoned is fine for DB triggers later.
+                           router.push('/');
+                        }}>
+                           {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
+                        </Button>
+                     </div>
                    </div>
                  </div>
                )}
@@ -302,6 +312,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
          </div>
       </div>
+
+      <RulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
     </div>
   );
 }

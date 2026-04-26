@@ -11,6 +11,7 @@ import { useLangStore } from "../../../store/useLangStore";
 import { ROLES } from "../../../lib/roles";
 import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/Button";
+import { RulesModal } from "../../../components/RulesModal";
 
 // Full screen transition cinematic component
 const PhaseTransition = ({ phase, lang }: { phase: string, lang: 'en'|'id' }) => {
@@ -59,6 +60,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
 
   const [roleRevealed, setRoleRevealed] = useState(false);
   const [isCastingVote, setIsCastingVote] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   useEffect(() => {
     if (!playerId) {
@@ -141,9 +143,14 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                   <p className="text-2xl text-slate-300 font-serif mb-2">
                      {room.settings.winner === 'village' ? (lang === 'en' ? 'The Village Survives' : 'Warga Desa Selamat') : (lang === 'en' ? 'The Werewolves Hunted Everyone' : 'Manusia Serigala Menguasai Desa')}
                   </p>
-                  <p className="text-sm text-slate-500 uppercase tracking-widest mt-12 animate-pulse mb-8">
-                     {lang === 'en' ? 'WAITING FOR HOST TO CLOSE LOBBY...' : 'MENUNGGU HOST...'}
-                  </p>
+                  <div className="mt-12 mb-8">
+                     <p className="text-sm text-slate-500 uppercase tracking-widest animate-pulse mb-2">
+                        {lang === 'en' ? 'WAITING FOR HOST TO CLOSE LOBBY...' : 'MENUNGGU HOST...'}
+                     </p>
+                     <p className="text-xs text-amber-500/80 max-w-xs mx-auto">
+                        {lang === 'en' ? 'If you still want to play the next round, DO NOT press this button!' : 'Kalau masih mau main ronde selanjutnya, JANGAN pencet tombol ini!'}
+                     </p>
+                  </div>
                   <Button 
                     variant="danger" 
                     size="sm" 
@@ -152,7 +159,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                        router.push('/');
                     }}
                   >
-                     {lang === 'en' ? 'Leave Game (Main Menu)' : 'Keluar Berhenti (Menu Utama)'}
+                     {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
                   </Button>
                </div>
             </motion.div>
@@ -166,6 +173,9 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
               <h2 className="text-xs text-slate-400 uppercase tracking-wider">Player</h2>
               <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
                 {lang.toUpperCase()}
+              </button>
+              <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">
+                i
               </button>
             </div>
             <p className="font-bold text-lg">{me.name}</p>
@@ -274,6 +284,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
 
       </div>
 
+      <RulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
     </div>
   );
 }
