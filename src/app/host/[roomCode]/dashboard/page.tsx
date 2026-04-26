@@ -382,14 +382,14 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                                           </Button>
                                        </>
                                     ) : (
-                                       <div className="flex gap-4 justify-center">
-                                          <Button variant="danger" size="lg" onClick={async () => {
+                                       <div className="grid grid-cols-2 gap-3 w-full mt-6">
+                                          <Button variant="danger" className="w-full" onClick={async () => {
                                              if (target) await killPlayer(target.id);
                                              await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
                                           }}>
                                              {lang === 'en' ? 'Confirm Kill' : 'Konfirmasi Kematian'}
                                           </Button>
-                                          <Button variant="secondary" size="lg" onClick={async () => {
+                                          <Button variant="secondary" className="w-full" onClick={async () => {
                                              await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
                                           }}>
                                              {lang === 'en' ? 'Cancel / Undo' : 'Batal / Anulir'}

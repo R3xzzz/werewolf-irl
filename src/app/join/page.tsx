@@ -85,7 +85,7 @@ export default function JoinRoomPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6">
-      <div className="absolute top-6 right-6 z-50">
+      <div className="absolute top-6 left-6 z-50">
         <button onClick={toggleLang} className="text-xs bg-white/10 px-3 py-1 rounded-full cursor-pointer hover:bg-white/20 transition font-bold uppercase tracking-wider text-moon-200">
           {lang === 'en' ? 'EN' : 'ID'}
         </button>
