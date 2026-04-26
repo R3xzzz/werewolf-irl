@@ -32,8 +32,9 @@ export default function Home() {
           transition={{ duration: 0.8, ease: "easeOut" }}
           className="text-center mb-12"
         >
-          <h1 className="font-serif text-5xl md:text-6xl font-bold tracking-widest text-moon-50 mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+          <h1 className="font-serif text-5xl md:text-6xl font-bold tracking-widest text-moon-50 mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] relative inline-block">
             WEREWOLF
+            <span className="absolute -top-3 -right-12 text-[10px] md:text-xs font-sans bg-moon-600 text-forest-950 px-2 py-0.5 rounded-full shadow-lg rotate-12 font-bold tracking-wider">BETA</span>
           </h1>
           <p className="font-sans text-moon-200/80 text-lg uppercase tracking-[0.3em]">
             {lang === 'en' ? 'Trust No One.' : 'Jangan Percaya Siapapun.'}

@@ -72,7 +72,10 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          if (!target) continue;
 
          if (currentRoleAction.id === 'seer') {
-            const targetRole = ROLES[target.role];
+            let targetRole = ROLES[target.role];
+            if (target.role === 'alpha_wolf') {
+               targetRole = Math.random() > 0.5 ? ROLES['alpha_wolf'] : ROLES['villager'];
+            }
             sendPopup({
                type: 'popup',
                visibility: 'private',
@@ -85,7 +88,9 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          } else if (currentRoleAction.id === 'bodyguard') {
             newSettings.lastProtectedPlayerId = target.id;
          } else if (currentRoleAction.id === 'werewolf' || currentRoleAction.id === 'alpha_wolf') {
-            newSettings.werewolfTargetId = target.id;
+            if (!newSettings.wolvesDisabled) {
+               newSettings.werewolfTargetId = target.id;
+            }
          } else if (currentRoleAction.id === 'doppelganger') {
             newSettings.doppelTargetId = target.id;
          }
@@ -101,6 +106,22 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             }
          }
       }
+      if ((currentRoleAction.id === 'werewolf' || currentRoleAction.id === 'alpha_wolf') && newSettings.wolvesDisabled) {
+         newSettings.wolvesDisabled = false; // Disable only lasts one night
+         const logMsg = "Werewolf attack was disabled tonight due to Disease.";
+         if (!newSettings.historyLog.includes(logMsg)) newSettings.historyLog.push(logMsg);
+      }
+
+      if (currentRoleAction.id === 'alpha_wolf' && newSettings.alphaConvertTargetId) {
+         const targetId = newSettings.alphaConvertTargetId;
+         const target = actualPlayers.find(p => p.id === targetId);
+         if (target) {
+            await supabase.from('players').update({ role: 'werewolf', team: 'werewolf' }).eq('id', targetId);
+            newSettings.historyLog.push(`Alpha Wolf converted ${target.name} into a Werewolf.`);
+            newSettings.alphaConverted = true;
+         }
+         newSettings.alphaConvertTargetId = null;
+      }
 
       const nextStep = nightStep + 1;
       setNightStep(nextStep);
@@ -115,11 +136,36 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       }
    };
 
-   const killPlayer = async (playerId: string, isCascade = false) => {
+   const killPlayer = async (playerId: string, isCascade = false, source?: string) => {
       const player = players.find(p => p.id === playerId);
       if (!player || !player.alive) return;
 
       const role = ROLES[player.role];
+      let updatesToRoomSettings = { ...(room?.settings || {}) };
+
+      // Handle Diseased and Cursed interactions from Werewolf attacks
+      if (source === 'werewolf') {
+         if (player.role === 'diseased') {
+            updatesToRoomSettings.wolvesDisabled = true;
+         } else if (player.role === 'cursed') {
+            await supabase.from('players').update({ role: 'werewolf', team: 'werewolf' }).eq('id', playerId);
+            updatesToRoomSettings.historyLog = [...(updatesToRoomSettings.historyLog || []), `Cursed (${player.name}) survived the attack and became a Werewolf.`];
+            await supabase.from('rooms').update({ settings: updatesToRoomSettings }).eq('id', room?.id);
+            
+            sendPopup({
+               type: 'popup',
+               visibility: 'private',
+               targetId: playerId,
+               title_en: 'Cursed!',
+               title_id: 'Terkutuk!',
+               desc_en: 'You survived and became a Werewolf.',
+               desc_id: 'Kamu selamat dan menjadi Manusia Serigala.',
+               icon: '🐺',
+               durationMs: 6000
+            });
+            return; // Skip death completely
+         }
+      }
 
       await supabase.from('players').update({ alive: false }).eq('id', playerId);
 
@@ -134,19 +180,19 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          durationMs: 5000
       });
 
-      let updatesToRoomSettings = { ...(room?.settings || {}) };
+      let updatesToRoomSettingsUsed = updatesToRoomSettings;
 
       if (room) {
          const phaseLabel = room.phase.includes('day') || room.phase === 'voting' ? 'Day' : 'Night';
          const newLog = `${phaseLabel} ${room.round || 1}: ${player.name} (${role?.name}) died.`;
-         const currentHistory = updatesToRoomSettings.historyLog || [];
-         updatesToRoomSettings.historyLog = [...currentHistory, newLog];
+         const currentHistory = updatesToRoomSettingsUsed.historyLog || [];
+         updatesToRoomSettingsUsed.historyLog = [...currentHistory, newLog];
       }
 
       let newPhase = room?.phase;
 
       if (player.role === 'hunter') {
-         updatesToRoomSettings.phaseBeforeRevenge = room?.phase;
+         updatesToRoomSettingsUsed.phaseBeforeRevenge = room?.phase;
          newPhase = 'hunter_revenge';
          
          // Send private popup to hunter to let them know it's time
@@ -172,7 +218,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       }
 
       // 1. Cascade Lovers Death
-      const lovers = updatesToRoomSettings.lovers || [];
+      const lovers = updatesToRoomSettingsUsed.lovers || [];
       if (!isCascade && lovers.includes(playerId)) {
          const otherLoverId = lovers.find((id: string) => id !== playerId);
          const otherLover = players.find(p => p.id === otherLoverId);
@@ -194,7 +240,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       }
 
       // 2. Doppelgänger Transformation
-      if (updatesToRoomSettings.doppelTargetId === playerId) {
+      if (updatesToRoomSettingsUsed.doppelTargetId === playerId) {
          const doppelganger = players.find(p => p.role === 'doppelganger' && p.alive);
          if (doppelganger) {
             await supabase.from('players').update({ 
@@ -202,8 +248,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                team: player.team || role?.team 
             }).eq('id', doppelganger.id);
             
-            updatesToRoomSettings.historyLog.push(`Doppelgänger (${doppelganger.name}) inherited the role of ${player.name} (${role?.name}).`);
-            updatesToRoomSettings.doppelTargetId = null;
+            updatesToRoomSettingsUsed.historyLog.push(`Doppelgänger (${doppelganger.name}) inherited the role of ${player.name} (${role?.name}).`);
+            updatesToRoomSettingsUsed.doppelTargetId = null;
 
             setTimeout(() => {
                sendPopup({
@@ -223,8 +269,43 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
       await supabase.from('rooms').update({
          phase: newPhase,
-         settings: updatesToRoomSettings
+         settings: updatesToRoomSettingsUsed
       }).eq('id', room?.id);
+   };
+
+   const resolveVoting = async (target: any) => {
+      if (!target) return;
+      if (target.role === 'idiot') {
+         sendPopup({
+            type: 'popup',
+            visibility: 'public',
+            title_en: `${target.name} is the Village Idiot!`,
+            title_id: `${target.name} adalah Village Idiot!`,
+            desc_en: `They survived the vote but can never vote again.`,
+            desc_id: `Dia selamat dari voting tapi kehilangan hak suara selamanya.`,
+            icon: '🤪',
+            durationMs: 7000
+         });
+         await supabase.from('rooms').update({
+            settings: { ...room?.settings, idiotRevealed: target.id }
+         }).eq('id', room?.id);
+         return; // don't kill
+      }
+
+      await killPlayer(target.id, false, 'vote');
+
+      if (target.role === 'tanner') {
+         sendPopup({
+            type: 'popup',
+            visibility: 'public',
+            title_en: `Tanner Wins!`,
+            title_id: `Tanner Menang!`,
+            desc_en: `${target.name} wanted to be eliminated. They win, but the game continues!`,
+            desc_id: `${target.name} memang ingin dieliminasi. Dia menang, tapi permainan lanjut!`,
+            icon: '🎭',
+            durationMs: 8000
+         });
+      }
    };
 
    // Auto Win Condition Checker
@@ -238,7 +319,11 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       const totalWolves = actualPlayers.filter(p => ROLES[p.role]?.team === 'werewolf');
       if (totalWolves.length === 0) return;
 
-      if (aliveWolves.length === 0) {
+      const areLoversOnlySurvivors = alivePlayers.length === 2 && room.settings?.lovers?.length === 2 && room.settings.lovers.every((id: string) => alivePlayers.find(p => p.id === id));
+
+      if (areLoversOnlySurvivors) {
+         changePhase('ended', 'lovers');
+      } else if (aliveWolves.length === 0) {
          changePhase('ended', 'village');
       } else if (aliveWolves.length >= aliveVillagersAndNeutrals.length) {
          changePhase('ended', 'werewolf');
@@ -447,7 +532,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                                     ) : (
                                        <div className="flex flex-col sm:flex-row gap-3 w-full mt-6">
                                           <Button variant="danger" className="w-full" onClick={async () => {
-                                             if (target) await killPlayer(target.id);
+                                             if (target) await killPlayer(target.id, false, 'werewolf');
                                              await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
                                           }}>
                                              {lang === 'en' ? 'Confirm Kill' : 'Konfirmasi Kematian'}
@@ -526,7 +611,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                                     </div>
                                     {target?.alive ? (
                                        <button
-                                          onClick={() => killPlayer(target.id)}
+                                          onClick={() => resolveVoting(target)}
                                           className="ml-4 bg-wolf-950 text-wolf-400 border border-wolf-500/50 hover:bg-wolf-900 px-4 py-2 rounded text-sm font-bold transition-colors uppercase tracking-widest"
                                        >
                                           {lang === 'en' ? 'Eliminate' : 'Eliminasi'}
@@ -554,6 +639,12 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                         )}
                         {room.settings?.winner === 'werewolf' && (
                            <p className="text-2xl text-wolf-500 mb-8 uppercase tracking-widest font-bold">{lang === 'en' ? 'The Werewolves Win' : 'Serigala Menang!'}</p>
+                        )}
+                        {room.settings?.winner === 'lovers' && (
+                           <p className="text-2xl text-pink-400 mb-8 uppercase tracking-widest font-bold">{lang === 'en' ? 'The Lovers Win' : 'Pasangan Kekasih Menang!'}</p>
+                        )}
+                        {(room.settings?.winner === 'village' || room.settings?.winner === 'werewolf') && room.settings?.lovers?.length === 2 && room.settings.lovers.every((id: string) => alivePlayers.find(p => p.id === id)) && (
+                           <p className="text-xl text-pink-400 animate-pulse mb-8 italic">{lang === 'en' ? 'The Lovers also win together! 💕' : 'Pasangan Kekasih juga menang bersama! 💕'}</p>
                         )}
 
                         <p className="text-sm text-slate-400 max-w-sm mb-6">

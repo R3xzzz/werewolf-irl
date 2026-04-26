@@ -65,6 +65,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const [cupidSelection, setCupidSelection] = useState<string[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [kicked, setKicked] = useState(false);
   const [currentPopup, setCurrentPopup] = useState<GamePopupEvent | null>(null);
 
   useGameBroadcast(roomCode, (popup) => {
@@ -83,7 +84,30 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
     }
   }, [playerId, router, mounted]);
 
+  useEffect(() => {
+    if (!playersLoading && mounted && playerId) {
+      if (players.length > 0 && !players.find(p => p.id === playerId)) {
+         setKicked(true);
+      }
+    }
+  }, [players, playersLoading, mounted, playerId]);
+
   if (!mounted) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+
+  if (kicked) {
+    return (
+       <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
+         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-forest-950 p-8 rounded-2xl border border-red-500/50 max-w-sm w-full text-center">
+            <div className="text-4xl mb-4">🚪</div>
+            <h2 className="text-2xl font-serif text-white mb-2">{lang === 'en' ? 'You Were Kicked' : 'Kamu Dikeluarkan'}</h2>
+            <p className="text-slate-400 mb-6">{lang === 'en' ? 'You were kicked by the moderator.' : 'Kamu dikeluarkan oleh moderator.'}</p>
+            <Button onClick={() => { clearPlayer(); router.push('/'); }} className="w-full">
+               {lang === 'en' ? 'Main Menu' : 'Menu Utama'}
+            </Button>
+         </motion.div>
+       </div>
+    );
+  }
 
   if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (error || !room) {
@@ -102,11 +126,19 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   }
 
   const me = players.find(p => p.id === playerId);
-  if (!me) return <div className="min-h-screen flex items-center justify-center">Player session not found in room.</div>;
+  if (!me) return <div className="min-h-screen flex items-center justify-center">Loading player data...</div>;
 
   const myRole = ROLES[me.role];
   const actualPlayers = players.filter(p => !p.is_host);
-  const alivePlayers = actualPlayers.filter(p => p.alive && p.id !== me.id); // exclude self from target list
+  const alivePlayers = actualPlayers.filter(p => {
+     if (!p.alive) return false;
+     if (p.id === me.id) {
+        if (me.role === 'bodyguard') return true;
+        if (me.role === 'cupid' && room.round === 1) return true;
+        return false;
+     }
+     return true;
+  });
   const myVote = votes.find(v => v.voter_id === me.id);
 
   const getPhaseMessage = () => {
@@ -138,6 +170,17 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
        setIsCastingVote(false);
     }
    };
+
+  const handleAlphaWolfConvert = async (targetId: string) => {
+     try {
+       await supabase.from('rooms').update({ 
+          settings: { ...room.settings, alphaConvertTargetId: targetId } 
+       }).eq('id', room.id);
+       await supabase.from('players').update({ action_target_id: targetId }).eq('id', me.id);
+     } catch(e) {
+       console.error(e);
+     }
+  };
 
   const handleCupidSelect = (targetId: string) => {
      if (me?.action_target_id) return; // already confirmed
@@ -212,7 +255,11 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
             >
                <div className="absolute inset-0 bg-black/80 backdrop-blur-md -z-10" />
                <div>
-                  {myRole?.team === room.settings.winner ? (
+                  {room.settings.winner === 'lovers' ? (
+                     <h1 className="text-6xl md:text-8xl font-serif text-pink-400 drop-shadow-[0_0_30px_rgba(244,114,182,0.8)] mb-4 tracking-widest">
+                       {lang === 'en' ? 'TRUE LOVE' : 'CINTA SEJATI'}
+                     </h1>
+                  ) : myRole?.team === room.settings.winner ? (
                      <h1 className="text-6xl md:text-8xl font-serif text-emerald-400 drop-shadow-[0_0_30px_rgba(16,185,129,0.8)] mb-4 tracking-widest">
                        {lang === 'en' ? 'VICTORY' : 'MENANG'}
                      </h1>
@@ -222,8 +269,13 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                      </h1>
                   )}
                   <p className="text-2xl text-slate-300 font-serif mb-2">
-                     {room.settings.winner === 'village' ? (lang === 'en' ? 'The Village Survives' : 'Warga Desa Selamat') : (lang === 'en' ? 'The Werewolves Hunted Everyone' : 'Manusia Serigala Menguasai Desa')}
+                     {room.settings.winner === 'village' ? (lang === 'en' ? 'The Village Survives' : 'Warga Desa Selamat') : room.settings.winner === 'lovers' ? (lang === 'en' ? 'The Lovers Survived Together' : 'Kekasih Selamat Bersama') : (lang === 'en' ? 'The Werewolves Hunted Everyone' : 'Manusia Serigala Menguasai Desa')}
                   </p>
+                  {(room.settings.winner === 'village' || room.settings.winner === 'werewolf') && room.settings?.lovers?.length === 2 && room.settings.lovers.every((id: string) => actualPlayers.find(p => p.id === id)?.alive) && (
+                     <p className="text-xl text-pink-400 font-serif mb-2 italic animate-pulse">
+                        {lang === 'en' ? 'The Lovers also win together! 💕' : 'Pasangan Kekasih juga menang bersama! 💕'}
+                     </p>
+                  )}
                   <div className="mt-12 mb-8">
                      <p className="text-sm text-slate-500 uppercase tracking-widest animate-pulse mb-2">
                         {lang === 'en' ? 'WAITING FOR HOST TO CLOSE LOBBY...' : 'MENUNGGU HOST...'}
@@ -286,37 +338,71 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                     <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
                        {lang === 'en' ? 'Make your move' : 'Pilih targetmu'}
                     </h3>
-                    <ul className="space-y-2">
+                     <ul className="space-y-2">
                       {alivePlayers.map(p => {
                          let isSelected = false;
+                         let isConvertTarget = false;
                          if (me.role === 'cupid' && room.round === 1) {
                             isSelected = cupidSelection.includes(p.id);
+                         } else if (me.role === 'alpha_wolf') {
+                            isSelected = me.action_target_id === p.id && room.settings?.alphaConvertTargetId !== p.id;
+                            isConvertTarget = me.action_target_id === p.id && room.settings?.alphaConvertTargetId === p.id;
                          } else {
                             isSelected = me.action_target_id === p.id;
                          }
 
                          const otherWolvesTargeting = myRole?.team === 'werewolf' ? actualPlayers.filter(w => ROLES[w.role]?.team === 'werewolf' && w.id !== me.id && w.action_target_id === p.id) : [];
+                         const isConsecutiveBodyguard = me.role === 'bodyguard' && room.settings?.mode === 'competitive' && room.settings?.lastProtectedPlayerId === p.id;
+                         const canConvert = me.role === 'alpha_wolf' && !room.settings?.alphaConverted;
                          
                          return (
                            <li key={p.id}>
-                             <button
-                               onClick={() => (me.role === 'cupid' && room.round === 1) ? handleCupidSelect(p.id) : castNightAction(p.id)}
-                               className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
-                             >
-                                <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
-                                <div className="flex items-center gap-2">
-                                  {otherWolvesTargeting.length > 0 && (
-                                     <div className="flex -space-x-1">
-                                       {otherWolvesTargeting.map(w => (
-                                          <div key={w.id} className="w-5 h-5 rounded-full bg-wolf-600 border border-black text-[9px] flex items-center justify-center font-bold text-white shadow-sm" title={w.name}>
-                                            {w.name.charAt(0).toUpperCase()}
-                                          </div>
-                                       ))}
-                                     </div>
-                                  )}
-                                  {isSelected && <span className="text-xs uppercase tracking-widest text-moon-200">{lang === 'en' ? 'Selected' : 'Terpilih'}</span>}
+                              {me.role === 'alpha_wolf' ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                       if (room.settings?.alphaConvertTargetId) {
+                                          supabase.from('rooms').update({ settings: { ...room.settings, alphaConvertTargetId: null } }).eq('id', room.id);
+                                       }
+                                       castNightAction(p.id);
+                                    }}
+                                    className={`flex-1 p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
+                                  >
+                                    <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                    {isSelected && <span className="text-[10px] uppercase text-wolf-400">Kill</span>}
+                                  </button>
+                                  <button
+                                    onClick={() => handleAlphaWolfConvert(p.id)}
+                                    disabled={!canConvert}
+                                    className={`px-4 py-3 rounded-lg transition-all ${isConvertTarget ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${!canConvert ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                  >
+                                    <span className={`font-bold ${isConvertTarget ? 'text-white' : 'text-slate-300'}`}>{lang === 'en' ? 'Convert' : 'Ubah'}</span>
+                                  </button>
                                 </div>
-                             </button>
+                              ) : (
+                                <button
+                                  disabled={isConsecutiveBodyguard}
+                                  onClick={() => (me.role === 'cupid' && room.round === 1) ? handleCupidSelect(p.id) : castNightAction(p.id)}
+                                  className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${isConsecutiveBodyguard ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                >
+                                   <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                                      {p.name}
+                                      {isConsecutiveBodyguard && <span className="ml-2 text-[10px] uppercase text-wolf-500">Protected Last Night</span>}
+                                   </span>
+                                   <div className="flex items-center gap-2">
+                                     {otherWolvesTargeting.length > 0 && (
+                                        <div className="flex -space-x-1">
+                                          {otherWolvesTargeting.map(w => (
+                                             <div key={w.id} className="w-5 h-5 rounded-full bg-wolf-600 border border-black text-[9px] flex items-center justify-center font-bold text-white shadow-sm" title={w.name}>
+                                               {w.name.charAt(0).toUpperCase()}
+                                             </div>
+                                          ))}
+                                        </div>
+                                     )}
+                                     {isSelected && <span className="text-xs uppercase tracking-widest text-moon-200">{lang === 'en' ? 'Selected' : 'Terpilih'}</span>}
+                                   </div>
+                                </button>
+                              )}
                            </li>
                          )
                       })}
@@ -377,10 +463,13 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                            <li key={p.id}>
                              <button
                                onClick={() => castVote(p.id)}
-                               disabled={isCastingVote}
-                               className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
+                               disabled={isCastingVote || (me.role === 'idiot' && room.settings?.idiotRevealed === me.id)}
+                               className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${(me.role === 'idiot' && room.settings?.idiotRevealed === me.id) ? 'opacity-30 cursor-not-allowed' : ''}`}
                              >
-                                <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                                  {p.name}
+                                  {(me.role === 'idiot' && room.settings?.idiotRevealed === me.id) && <span className="ml-2 text-[10px] text-wolf-500">Voting Disabled</span>}
+                                </span>
                                 {isSelected && <span className="text-xs uppercase tracking-widest text-wolf-200">Voted</span>}
                              </button>
                            </li>
@@ -390,6 +479,27 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                     {alivePlayers.length === 0 && <p className="text-sm text-slate-500 italic">No one else is alive.</p>}
                  </div>
               )}
+
+               {room.phase === 'night' && me.role === 'mason' && room.round === 1 && (
+                 <div className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
+                       {lang === 'en' ? 'Your Fellow Masons' : 'Saudara Masonmu'}
+                    </h3>
+                    <ul className="space-y-2">
+                      {actualPlayers.filter(p => p.role === 'mason' && p.id !== me.id).length > 0 ? (
+                         actualPlayers.filter(p => p.role === 'mason' && p.id !== me.id).map(p => (
+                            <li key={p.id} className="p-3 bg-forest-950 rounded-lg border border-white/5">
+                               <span className="font-bold text-slate-300">{p.name}</span>
+                            </li>
+                         ))
+                      ) : (
+                         <li className="text-slate-400 italic">
+                            {lang === 'en' ? 'You are the only Mason.' : 'Kamu adalah satu-satunya Mason.'}
+                         </li>
+                      )}
+                    </ul>
+                 </div>
+               )}
 
               {room.phase !== 'lobby' && !myRole && (
                  <div className="flex flex-col items-center justify-center p-16 glass-panel rounded-2xl animate-pulse w-full max-w-sm border-2 border-moon-400/20 mx-auto">

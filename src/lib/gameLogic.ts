@@ -25,6 +25,11 @@ export function getAutoBalancedRoles(playerCount: number, mode: GameMode = 'casu
      const chosenWolves = customRoles.filter(r => ROLES[r]?.team === 'werewolf');
      const chosenOthers = customRoles.filter(r => ROLES[r]?.team !== 'werewolf' && r !== 'villager');
      
+     // If they selected alpha_wolf, ensure normal werewolf is ALSO added so alpha wolf doesn't replace it
+     if (chosenWolves.includes('alpha_wolf') && !chosenWolves.includes('werewolf')) {
+        chosenWolves.push('werewolf');
+     }
+
      // Add Wolves from the custom pool
      for (let i = 0; i < wolfCount; i++) {
         if (chosenWolves.length > 0) {
@@ -32,6 +37,12 @@ export function getAutoBalancedRoles(playerCount: number, mode: GameMode = 'casu
         } else {
            roles.push('werewolf'); // Fallback if no wolves selected
         }
+     }
+     
+     // Failsafe: if we specifically chose alpha_wolf and it got pushed out by loop length/wolfCount
+     // Or if they wanted both but wolfCount was only 1.
+     if (customRoles.includes('alpha_wolf') && !roles.includes('alpha_wolf')) {
+        roles.push('alpha_wolf');
      }
 
      // Add non-wolf custom roles
