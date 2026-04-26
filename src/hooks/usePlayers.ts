@@ -70,5 +70,5 @@ export function usePlayers(roomId: string | undefined) {
     };
   }, [roomId]);
 
-  return { players, loading };
+  return { players, loading, setPlayers };
 }

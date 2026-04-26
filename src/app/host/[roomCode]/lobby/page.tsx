@@ -17,7 +17,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
   const router = useRouter();
 
   const { room, loading: roomLoading, error } = useRoomState(roomCode);
-  const { players, loading: playersLoading } = usePlayers(room?.id);
+  const { players, loading: playersLoading, setPlayers } = usePlayers(room?.id);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mode, setMode] = useState<GameMode>('casual');
@@ -78,6 +78,9 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
   };
 
   const handleKickPlayer = async (playerId: string) => {
+    // Optimistic update so the UI reflects it instantly
+    setPlayers(prev => prev.filter(p => p.id !== playerId));
+    
     try {
       const { error } = await supabase.from('players').delete().eq('id', playerId);
       if (error) {
