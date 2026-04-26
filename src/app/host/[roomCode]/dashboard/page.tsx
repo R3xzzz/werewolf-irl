@@ -359,7 +359,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
    };
 
    useEffect(() => {
-      if (!room || room.phase === 'ended' || room.phase === 'lobby') return;
+      if (!room || room.phase === 'ended' || room.phase === 'lobby' || room.phase.includes('transition') || (room.round || 0) === 0) return;
       
       // 1. Enforce Missing Heartbreak Deaths (Safety Catch)
       const lovers = room.settings?.lovers || [];

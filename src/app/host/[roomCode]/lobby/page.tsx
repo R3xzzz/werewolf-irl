@@ -65,6 +65,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
         .from('rooms')
         .update({ 
            phase: 'night_transition', 
+           round: 1,
            settings: { 
               mode, 
               drunkSecrets,
