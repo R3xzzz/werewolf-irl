@@ -86,6 +86,19 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             newSettings.lastProtectedPlayerId = target.id;
          } else if (currentRoleAction.id === 'werewolf' || currentRoleAction.id === 'alpha_wolf') {
             newSettings.werewolfTargetId = target.id;
+         } else if (currentRoleAction.id === 'doppelganger') {
+            newSettings.doppelTargetId = target.id;
+         }
+      }
+
+      if (currentRoleAction.id === 'cupid' && newSettings.lovers && newSettings.lovers.length === 2) {
+         const l1 = players.find(p => p.id === newSettings.lovers[0]);
+         const l2 = players.find(p => p.id === newSettings.lovers[1]);
+         if (l1 && l2) {
+            const logMsg = `Lovers Pair Created: ${l1.name} ❤️ ${l2.name}`;
+            if (!newSettings.historyLog.includes(logMsg)) {
+               newSettings.historyLog.push(logMsg);
+            }
          }
       }
 
@@ -102,9 +115,9 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       }
    };
 
-   const killPlayer = async (playerId: string) => {
+   const killPlayer = async (playerId: string, isCascade = false) => {
       const player = players.find(p => p.id === playerId);
-      if (!player) return;
+      if (!player || !player.alive) return;
 
       const role = ROLES[player.role];
 
@@ -158,13 +171,54 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          }
       }
 
-      const doppelganger = players.find(p => p.role === 'doppelganger' && p.alive && p.action_target_id === player.id);
-      if (doppelganger) {
-         await supabase.from('players').update({ 
-            role: player.role, 
-            team: player.team || role?.team 
-         }).eq('id', doppelganger.id);
-         updatesToRoomSettings.historyLog.push(`Doppelganger (${doppelganger.name}) inherited the role of ${player.name} (${role?.name}).`);
+      // 1. Cascade Lovers Death
+      const lovers = updatesToRoomSettings.lovers || [];
+      if (!isCascade && lovers.includes(playerId)) {
+         const otherLoverId = lovers.find((id: string) => id !== playerId);
+         const otherLover = players.find(p => p.id === otherLoverId);
+         if (otherLoverId && otherLover && otherLover.alive) {
+            setTimeout(async () => {
+               await killPlayer(otherLoverId, true);
+               sendPopup({
+                  type: 'popup',
+                  visibility: 'public',
+                  title_en: `Broken Heart`,
+                  title_id: `Patah Hati`,
+                  desc_en: `${otherLover.name} has died of a broken heart after ${player.name}'s death.`,
+                  desc_id: `${otherLover.name} mati karena patah hati setelah kematian ${player.name}.`,
+                  icon: '💔',
+                  durationMs: 7000
+               });
+            }, 3000);
+         }
+      }
+
+      // 2. Doppelgänger Transformation
+      if (updatesToRoomSettings.doppelTargetId === playerId) {
+         const doppelganger = players.find(p => p.role === 'doppelganger' && p.alive);
+         if (doppelganger) {
+            await supabase.from('players').update({ 
+               role: player.role, 
+               team: player.team || role?.team 
+            }).eq('id', doppelganger.id);
+            
+            updatesToRoomSettings.historyLog.push(`Doppelgänger (${doppelganger.name}) inherited the role of ${player.name} (${role?.name}).`);
+            updatesToRoomSettings.doppelTargetId = null;
+
+            setTimeout(() => {
+               sendPopup({
+                  type: 'popup',
+                  visibility: 'private',
+                  targetId: doppelganger.id,
+                  title_en: 'Target Died!',
+                  title_id: 'Target Tereliminasi!',
+                  desc_en: `You have transformed into: ${role?.name || 'Unknown'}`,
+                  desc_id: `Kamu telah berubah menjadi: ${role?.name_id || 'Tidak diketahui'}`,
+                  icon: '🎭',
+                  durationMs: 6000
+               });
+            }, 1000);
+         }
       }
 
       await supabase.from('rooms').update({

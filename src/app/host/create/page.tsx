@@ -34,6 +34,16 @@ export default function CreateRoomPage() {
     const code = generateRoomCode();
 
     try {
+      // Background Cleanup: Auto-delete abandoned rooms older than 24 hours
+      // We run this "silently" before creating a new room to keep the database clean
+      // without needing an actual server-side CRON job.
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      try {
+        await supabase.from('rooms').delete().lt('created_at', twentyFourHoursAgo);
+      } catch (e) {
+        console.error('Cleanup error:', e);
+      }
+
       // 1. Create Room
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')

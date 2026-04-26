@@ -62,6 +62,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
 
   const [roleRevealed, setRoleRevealed] = useState(false);
   const [isCastingVote, setIsCastingVote] = useState(false);
+  const [cupidSelection, setCupidSelection] = useState<string[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [currentPopup, setCurrentPopup] = useState<GamePopupEvent | null>(null);
@@ -136,6 +137,40 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
     } finally {
        setIsCastingVote(false);
     }
+   };
+
+  const handleCupidSelect = (targetId: string) => {
+     if (me?.action_target_id) return; // already confirmed
+     setCupidSelection(prev => {
+        if (prev.includes(targetId)) return prev.filter(id => id !== targetId);
+        if (prev.length < 2) return [...prev, targetId];
+        return prev;
+     });
+  };
+
+  const confirmCupidLovers = async () => {
+     if (cupidSelection.length !== 2 || !me || !room) return;
+     try {
+        await supabase.from('rooms').update({ settings: { ...room.settings, lovers: cupidSelection } }).eq('id', room.id);
+        await supabase.from('players').update({ action_target_id: cupidSelection[0] }).eq('id', me.id);
+        
+        const p1 = players.find(p => p.id === cupidSelection[0])?.name;
+        const p2 = players.find(p => p.id === cupidSelection[1])?.name;
+
+        setCurrentPopup({
+           type: 'popup',
+           visibility: 'private',
+           targetId: me.id,
+           title_en: 'Lovers Linked!',
+           title_id: 'Kekasih Terhubung!',
+           desc_en: `You linked: ${p1} ❤️ ${p2}`,
+           desc_id: `Kamu menghubungkan: ${p1} ❤️ ${p2}`,
+           icon: '❤️',
+           durationMs: 5000
+        });
+     } catch(e) {
+        console.error(e);
+     }
   };
 
   const castNightAction = async (targetId: string) => {
@@ -253,13 +288,19 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                     </h3>
                     <ul className="space-y-2">
                       {alivePlayers.map(p => {
-                         const isSelected = me.action_target_id === p.id;
+                         let isSelected = false;
+                         if (me.role === 'cupid' && room.round === 1) {
+                            isSelected = cupidSelection.includes(p.id);
+                         } else {
+                            isSelected = me.action_target_id === p.id;
+                         }
+
                          const otherWolvesTargeting = myRole?.team === 'werewolf' ? actualPlayers.filter(w => ROLES[w.role]?.team === 'werewolf' && w.id !== me.id && w.action_target_id === p.id) : [];
                          
                          return (
                            <li key={p.id}>
                              <button
-                               onClick={() => castNightAction(p.id)}
+                               onClick={() => (me.role === 'cupid' && room.round === 1) ? handleCupidSelect(p.id) : castNightAction(p.id)}
                                className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
                              >
                                 <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
@@ -280,6 +321,17 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                          )
                       })}
                     </ul>
+                    {me.role === 'cupid' && room.round === 1 && (
+                       <div className="mt-4 pt-4 border-t border-white/5">
+                          <Button 
+                             className="w-full" 
+                             disabled={cupidSelection.length !== 2 || !!me.action_target_id}
+                             onClick={confirmCupidLovers}
+                          >
+                             {me.action_target_id ? (lang === 'en' ? 'Confirmed' : 'Terkonfirmasi') : (lang === 'en' ? 'Confirm Lovers' : 'Konfirmasi Pasangan')}
+                          </Button>
+                       </div>
+                    )}
                  </motion.div>
               )}
 
