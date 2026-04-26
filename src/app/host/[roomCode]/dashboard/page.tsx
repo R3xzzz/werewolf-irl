@@ -50,6 +50,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
       if (newPhase === 'night_transition') {
          await supabase.from('rooms').update({ round: (room.round || 0) + 1 }).eq('id', room.id);
+         // Clear temporary daily flags for the next round
          updates.settings = { ...room.settings, troubleCandidates: null, pacifistActive: false };
       }
 
@@ -65,49 +66,31 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
       if (newPhase === 'day') {
          const s = room.settings || {};
-         let updatedSettings = { ...s };
-         let needsUpdate = false;
-
-         if (s.troubleScheduled && s.troubleScheduledTargets) {
-            updatedSettings.troubleCandidates = s.troubleScheduledTargets;
-            updatedSettings.troubleScheduled = false;
-            updatedSettings.troubleScheduledTargets = null;
-            needsUpdate = true;
-            
+         
+         if (s.pacifistActive) {
             sendPopup({
                type: 'popup',
                visibility: 'public',
-               title_en: 'Scheduled Trouble Brews!',
-               title_id: 'Onar Terjadwal Dimulai!',
-               desc_en: `Today's vote restricted to: ${players.find(p => p.id === updatedSettings.troubleCandidates[0])?.name} vs ${players.find(p => p.id === updatedSettings.troubleCandidates[1])?.name}`,
-               desc_id: `Voting hari ini terbatas antara: ${players.find(p => p.id === updatedSettings.troubleCandidates[0])?.name} vs ${players.find(p => p.id === updatedSettings.troubleCandidates[1])?.name}`,
-               icon: '⚖️',
+               title_en: '☮ Peace Chosen',
+               title_id: '☮ Perdamaian Terpilih',
+               desc_en: 'No one will be eliminated today by the Pacifist.',
+               desc_id: 'Tidak ada yang dieliminasi hari ini oleh Pacifist.',
+               icon: '🕊️',
                durationMs: 8000
             });
          }
 
-         if (s.pacifistScheduled) {
-            updatedSettings.pacifistActive = true;
-            updatedSettings.pacifistScheduled = false;
-            needsUpdate = true;
-            
-            const pacifist = players.find(p => p.role === 'pacifist' && p.alive);
-            if (pacifist) {
-               sendPopup({
-                  type: 'popup',
-                  visibility: 'public',
-                  title_en: 'Scheduled Pacifist Plea!',
-                  title_id: 'Seruan Damai Terjadwal!',
-                  desc_en: `${pacifist.name} is calling for peace today.`,
-                  desc_id: `${pacifist.name} menyerukan kedamaian hari ini.`,
-                  icon: '🕊️',
-                  durationMs: 6000
-               });
-            }
-         }
-
-         if (needsUpdate) {
-            updates.settings = updatedSettings;
+         if (s.troubleCandidates) {
+            sendPopup({
+               type: 'popup',
+               visibility: 'public',
+               title_en: 'Trouble Brews!',
+               title_id: 'Onar Dimulai!',
+               desc_en: `Today's vote restricted to: ${players.find(p => p.id === s.troubleCandidates[0])?.name} vs ${players.find(p => p.id === s.troubleCandidates[1])?.name}`,
+               desc_id: `Voting hari ini terbatas antara: ${players.find(p => p.id === s.troubleCandidates[0])?.name} vs ${players.find(p => p.id === s.troubleCandidates[1])?.name}`,
+               icon: '⚖️',
+               durationMs: 8000
+            });
          }
       }
 
@@ -148,6 +131,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             }
          } else if (currentRoleAction.id === 'doppelganger') {
             newSettings.doppelTargetId = target.id;
+         } else if (currentRoleAction.id === 'troublemaker') {
+            newSettings.historyLog.push(`Troublemaker used skill on ${target.name} and another player.`);
          }
       }
 
@@ -155,7 +140,6 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          const l1 = players.find(p => p.id === newSettings.lovers[0]);
          const l2 = players.find(p => p.id === newSettings.lovers[1]);
          if (l1 && l2) {
-            // Send private notifications to both lovers
             sendPopup({
                type: 'popup',
                visibility: 'private',
@@ -178,17 +162,12 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                icon: '❤️',
                durationMs: 10000
             });
-
-            const logMsg = `Lovers Pair Created: ${l1.name} ❤️ ${l2.name}`;
-            if (!newSettings.historyLog.includes(logMsg)) {
-               newSettings.historyLog.push(logMsg);
-            }
          }
       }
+
       if ((currentRoleAction.id === 'werewolf' || currentRoleAction.id === 'alpha_wolf') && newSettings.wolvesDisabled) {
-         newSettings.wolvesDisabled = false; // Disable only lasts one night
-         const logMsg = "Werewolf attack was disabled tonight due to Disease.";
-         if (!newSettings.historyLog.includes(logMsg)) newSettings.historyLog.push(logMsg);
+         newSettings.wolvesDisabled = false;
+         newSettings.historyLog.push("Werewolf attack was disabled tonight due to Disease.");
       }
 
       if (currentRoleAction.id === 'alpha_wolf' && newSettings.alphaConvertTargetId) {
@@ -222,7 +201,6 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       const role = ROLES[player.role];
       let updatesToRoomSettings = { ...(room?.settings || {}) };
 
-      // Handle Diseased and Cursed interactions from Werewolf attacks
       if (source === 'werewolf') {
          if (player.role === 'diseased') {
             updatesToRoomSettings.wolvesDisabled = true;
@@ -232,59 +210,39 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             await supabase.from('rooms').update({ settings: updatesToRoomSettings }).eq('id', room?.id);
             
             sendPopup({
-               type: 'popup',
-               visibility: 'private',
-               targetId: playerId,
-               title_en: 'Cursed!',
-               title_id: 'Terkutuk!',
-               desc_en: 'You survived and became a Werewolf.',
-               desc_id: 'Kamu selamat dan menjadi Manusia Serigala.',
-               icon: '🐺',
-               durationMs: 6000
+               type: 'popup', visibility: 'private', targetId: playerId,
+               title_en: 'Cursed!', title_id: 'Terkutuk!',
+               desc_en: 'You survived and became a Werewolf.', desc_id: 'Kamu selamat dan menjadi Manusia Serigala.',
+               icon: '🐺', durationMs: 6000
             });
-            return; // Skip death completely
+            return;
          }
       }
 
       await supabase.from('players').update({ alive: false }).eq('id', playerId);
 
       sendPopup({
-         type: 'popup',
-         visibility: 'public',
-         title_en: `${player.name} died`,
-         title_id: `${player.name} tereliminasi`,
-         desc_en: `Role: ${role?.name || 'Unknown'}`,
-         desc_id: `Peran: ${role?.name_id || 'Tidak diketahui'}`,
-         icon: '☠️',
-         durationMs: 5000
+         type: 'popup', visibility: 'public',
+         title_en: `${player.name} died`, title_id: `${player.name} tereliminasi`,
+         desc_en: `Role: ${role?.name || 'Unknown'}`, desc_id: `Peran: ${role?.name_id || 'Tidak diketahui'}`,
+         icon: '☠️', durationMs: 5000
       });
-
-      let updatesToRoomSettingsUsed = updatesToRoomSettings;
 
       if (room) {
          const phaseLabel = room.phase.includes('day') || room.phase === 'voting' ? 'Day' : 'Night';
-         const newLog = `${phaseLabel} ${room.round || 1}: ${player.name} (${role?.name}) died.`;
-         const currentHistory = updatesToRoomSettingsUsed.historyLog || [];
-         updatesToRoomSettingsUsed.historyLog = [...currentHistory, newLog];
+         updatesToRoomSettings.historyLog = [...(updatesToRoomSettings.historyLog || []), `${phaseLabel} ${room.round || 1}: ${player.name} (${role?.name}) died.`];
       }
 
       let newPhase = room?.phase;
 
       if (player.role === 'hunter') {
-         updatesToRoomSettingsUsed.phaseBeforeRevenge = room?.phase;
+         updatesToRoomSettings.phaseBeforeRevenge = room?.phase;
          newPhase = 'hunter_revenge';
-         
-         // Send private popup to hunter to let them know it's time
          sendPopup({
-            type: 'popup',
-            visibility: 'private',
-            targetId: player.id,
-            title_en: `Take your revenge!`,
-            title_id: `Balas dendammu!`,
-            desc_en: `Choose one player to die with you.`,
-            desc_id: `Pilih satu pemain untuk mati bersamamu.`,
-            icon: '🔫',
-            durationMs: 6000
+            type: 'popup', visibility: 'private', targetId: player.id,
+            title_en: `Take your revenge!`, title_id: `Balas dendammu!`,
+            desc_en: `Choose one player to die with you.`, desc_id: `Pilih satu pemain untuk mati bersamamu.`,
+            icon: '🔫', durationMs: 6000
          });
       }
 
@@ -296,8 +254,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          }
       }
 
-      // 1. Cascade Lovers Death
-      const lovers = updatesToRoomSettingsUsed.lovers || [];
+      // Cascade Lovers Death
+      const lovers = updatesToRoomSettings.lovers || [];
       if (!isCascade && lovers.includes(playerId)) {
          const otherLoverId = lovers.find((id: string) => id !== playerId);
          const otherLover = players.find(p => p.id === otherLoverId);
@@ -305,50 +263,29 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             setTimeout(async () => {
                await killPlayer(otherLoverId, true);
                sendPopup({
-                  type: 'popup',
-                  visibility: 'public',
-                  title_en: `Broken Heart`,
-                  title_id: `Patah Hati`,
+                  type: 'popup', visibility: 'public',
+                  title_en: `Broken Heart`, title_id: `Patah Hati`,
                   desc_en: `${otherLover.name} has died of a broken heart after ${player.name}'s death.`,
                   desc_id: `${otherLover.name} mati karena patah hati setelah kematian ${player.name}.`,
-                  icon: '💔',
-                  durationMs: 7000
+                  icon: '💔', durationMs: 7000
                });
             }, 3000);
          }
       }
 
-      // 2. Doppelgänger Transformation
-      if (updatesToRoomSettingsUsed.doppelTargetId === playerId) {
+      // Doppelgänger Transformation
+      if (updatesToRoomSettings.doppelTargetId === playerId) {
          const doppelganger = players.find(p => p.role === 'doppelganger' && p.alive);
          if (doppelganger) {
-            await supabase.from('players').update({ 
-               role: player.role, 
-               team: player.team || role?.team 
-            }).eq('id', doppelganger.id);
-            
-            updatesToRoomSettingsUsed.historyLog.push(`Doppelgänger (${doppelganger.name}) inherited the role of ${player.name} (${role?.name}).`);
-            updatesToRoomSettingsUsed.doppelTargetId = null;
-
-            setTimeout(() => {
-               sendPopup({
-                  type: 'popup',
-                  visibility: 'private',
-                  targetId: doppelganger.id,
-                  title_en: 'Target Died!',
-                  title_id: 'Target Tereliminasi!',
-                  desc_en: `You have transformed into: ${role?.name || 'Unknown'}`,
-                  desc_id: `Kamu telah berubah menjadi: ${role?.name_id || 'Tidak diketahui'}`,
-                  icon: '🎭',
-                  durationMs: 6000
-               });
-            }, 1000);
+            await supabase.from('players').update({ role: player.role, team: player.team || role?.team }).eq('id', doppelganger.id);
+            updatesToRoomSettings.historyLog.push(`Doppelgänger (${doppelganger.name}) inherited the role of ${player.name} (${role?.name}).`);
+            updatesToRoomSettings.doppelTargetId = null;
          }
       }
 
       await supabase.from('rooms').update({
          phase: newPhase,
-         settings: updatesToRoomSettingsUsed
+         settings: updatesToRoomSettings
       }).eq('id', room?.id);
    };
 
@@ -356,59 +293,41 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       if (!target) return;
       if (target.role === 'idiot') {
          sendPopup({
-            type: 'popup',
-            visibility: 'public',
-            title_en: `${target.name} is the Village Idiot!`,
-            title_id: `${target.name} adalah Village Idiot!`,
-            desc_en: `They survived the vote but can never vote again.`,
-            desc_id: `Dia selamat dari voting tapi kehilangan hak suara selamanya.`,
-            icon: '🤪',
-            durationMs: 7000
+            type: 'popup', visibility: 'public',
+            title_en: `${target.name} is the Village Idiot!`, title_id: `${target.name} adalah Village Idiot!`,
+            desc_en: `They survived the vote but can never vote again.`, desc_id: `Dia selamat dari voting tapi kehilangan hak suara selamanya.`,
+            icon: '🤪', durationMs: 7000
          });
          await supabase.from('rooms').update({
             settings: { ...room?.settings, idiotRevealed: target.id }
          }).eq('id', room?.id);
-         return; // don't kill
+         return;
       }
 
       await killPlayer(target.id, false, 'vote');
 
       if (target.role === 'tanner') {
          sendPopup({
-            type: 'popup',
-            visibility: 'public',
-            title_en: `Tanner Wins!`,
-            title_id: `Tanner Menang!`,
-            desc_en: `${target.name} wanted to be eliminated. They win, but the game continues!`,
-            desc_id: `${target.name} memang ingin dieliminasi. Dia menang, tapi permainan lanjut!`,
-            icon: '🎭',
-            durationMs: 8000
+            type: 'popup', visibility: 'public',
+            title_en: `Tanner Wins!`, title_id: `Tanner Menang!`,
+            desc_en: `${target.name} wanted to be eliminated. They win, but the game continues!`, desc_id: `${target.name} memang ingin dieliminasi. Dia menang, tapi permainan lanjut!`,
+            icon: '🎭', durationMs: 8000
          });
       }
 
-      // Automatically continue to next phase after a delay, 
-      // but ONLY if we didn't enter a special sub-phase like hunter_revenge
       setTimeout(() => {
-         if (typeof window !== 'undefined') {
-            // Re-fetch or check current state via closure is tricky, but we can check the state at timeout time
-            if (!room) return;
+         if (typeof window !== 'undefined' && room) {
             supabase.from('rooms').select('phase').eq('id', room.id).single().then(({ data }) => {
-               if (data && data.phase === 'voting') {
-                  changePhase('night_transition');
-               }
+               if (data && data.phase === 'voting') changePhase('night_transition');
             });
          }
       }, 7000);
    };
 
-   // Auto Win Condition Checker
    useEffect(() => {
       if (!room || room.phase === 'ended' || room.phase === 'lobby') return;
-
       const aliveWolves = alivePlayers.filter(p => ROLES[p.role]?.team === 'werewolf');
       const aliveVillagersAndNeutrals = alivePlayers.filter(p => ROLES[p.role]?.team !== 'werewolf');
-
-      // We only auto-end if there was a game actually populated with wolves to prevent instant empty room finishes
       const totalWolves = actualPlayers.filter(p => ROLES[p.role]?.team === 'werewolf');
       if (totalWolves.length === 0) return;
 
@@ -419,26 +338,12 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       } else if (aliveWolves.length === 0) {
          changePhase('ended', 'village');
       } else if (aliveWolves.length >= aliveVillagersAndNeutrals.length) {
-         // Final check: if wolves equals others, but lovers are still in, they might have a chance? 
-         // Standard rules: Wolves win. But if lovers are 1 wolf + 1 villager, they win if they are last 2.
          changePhase('ended', 'werewolf');
       }
    }, [alivePlayers.length, room?.phase]);
 
-   useEffect(() => {
-      // Failsafe auto-redirect if phase is externally set to lobby
-      if (room?.phase === 'lobby') {
-         router.push(`/host/${roomCode}/lobby`);
-      }
-   }, [room?.phase, roomCode, router]);
+   const validVotes = votes.filter(vote => players.find(p => p.id === vote.voter_id)?.alive);
 
-   // Only consider votes from players who are currently alive
-   const validVotes = votes.filter(vote => {
-      const voter = players.find(p => p.id === vote.voter_id);
-      return voter && voter.alive;
-   });
-
-   // Tally votes helper
    const groupedVotes = Array.from(
       validVotes.reduce((acc, vote) => {
          if (!acc.has(vote.target_id)) acc.set(vote.target_id, []);
@@ -451,7 +356,6 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       return { target, voters };
    }).sort((a, b) => b.voters.length - a.voters.length);
 
-   // The Assistant view for the Night
    const renderNightAssistant = () => {
       if (nightStep === -1) {
          return (
@@ -461,38 +365,22 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                <Button size="lg" onClick={async () => {
                   setNightStep(0);
                   changePhase('night');
-
-                  // Handle Drunk Reveal on Night 3
                   if (room && room.round === 3) {
                      const drunks = actualPlayers.filter(p => p.role === 'drunk' && p.alive);
                      const drunkSecrets = room.settings?.drunkSecrets || {};
-                     
                      for (const drunk of drunks) {
                         const realRole = drunkSecrets[drunk.id] || 'villager';
                         const roleData = ROLES[realRole];
-                        
-                        await supabase.from('players').update({ 
-                           role: realRole,
-                           team: roleData?.team || 'village' 
-                        }).eq('id', drunk.id);
-
+                        await supabase.from('players').update({ role: realRole, team: roleData?.team || 'village' }).eq('id', drunk.id);
                         sendPopup({
-                           type: 'popup',
-                           visibility: 'private',
-                           targetId: drunk.id,
-                           title_en: 'Sobriety Hits!',
-                           title_id: 'Sudah Sadar!',
-                           desc_en: `Your true role is: ${roleData?.name}`,
-                           desc_id: `Peran aslimu adalah: ${roleData?.name_id}`,
-                           icon: '🍺',
-                           durationMs: 10000
+                           type: 'popup', visibility: 'private', targetId: drunk.id,
+                           title_en: 'Sobriety Hits!', title_id: 'Sudah Sadar!',
+                           desc_en: `Your true role is: ${roleData?.name}`, desc_id: `Peran aslimu adalah: ${roleData?.name_id}`,
+                           icon: '🍺', durationMs: 10000
                         });
                      }
                   }
-
-                  await supabase.from('rooms').update({
-                     settings: { ...room?.settings, activeNightRole: gameNightRoles[0]?.id || null }
-                  }).eq('id', room?.id);
+                  await supabase.from('rooms').update({ settings: { ...room?.settings, activeNightRole: gameNightRoles[0]?.id || null } }).eq('id', room?.id);
                }}>{lang === 'en' ? 'Begin Night Order' : 'Mulai Malam'}</Button>
             </div>
          );
@@ -506,10 +394,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                <Button size="lg" onClick={async () => {
                   setNightStep(-1);
                   changePhase('day_transition');
-                  await supabase.from('rooms').update({
-                     settings: { ...room?.settings, activeNightRole: null }
-                  }).eq('id', room?.id);
-                  setTimeout(() => changePhase('day'), 3000); // Cinematic delay
+                  await supabase.from('rooms').update({ settings: { ...room?.settings, activeNightRole: null } }).eq('id', room?.id);
+                  setTimeout(() => changePhase('day'), 3000);
                }}>{lang === 'en' ? 'Start Day Phase' : 'Mulai Siang'}</Button>
             </div>
          );
@@ -521,14 +407,12 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       return (
          <div className="text-center p-8 relative">
             <h3 className="text-3xl font-serif text-white mb-2">{lang === 'en' ? currentRoleAction.name : currentRoleAction.name_id}</h3>
-
             {rolePlayers.length === 0 ? (
                <div className="text-slate-500 italic my-6">
-                  {lang === 'en' ? '(Role is in game but player is dead. Wait a few seconds to pretend they are acting, then skip.)' : '(Pemain peran ini udah mati. Diem aja beberapa detik buat ngecoh, terus skip.)'}
+                  {lang === 'en' ? '(Role is dead. Wait a few seconds then skip.)' : '(Pemain peran ini mati. Tunggu sebentar lalu lanjut.)'}
                </div>
             ) : (
                <div className="my-6">
-                  {/* Player Selections View */}
                   <div className="bg-forest-900 p-4 rounded-lg border border-white/5 inline-block text-left mb-4 w-full">
                      <h4 className="text-sm text-slate-400 mb-2">{lang === 'en' ? 'Player Selections:' : 'Pilihan Pemain:'}</h4>
                      <ul className="space-y-2">
@@ -548,7 +432,6 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                   <p className="text-lg text-slate-300">{lang === 'en' ? currentRoleAction.description : currentRoleAction.desc_id}</p>
                </div>
             )}
-
             <div className="mt-8 flex justify-center gap-4">
                <Button size="lg" onClick={() => confirmNightAction(currentRoleAction, rolePlayers)}>
                   {lang === 'en' ? 'Confirm & Next Role' : 'Konfirmasi & Lanjut'}
@@ -563,40 +446,29 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
    return (
       <div className="min-h-screen bg-black text-white p-4 md:p-8 flex flex-col items-center">
-
-         {/* Header Info */}
          <div className="w-full max-w-5xl flex flex-col sm:flex-row justify-between items-center gap-4 mb-8 bg-forest-950 p-4 rounded-xl border border-white/10">
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-               <div className="flex items-center gap-2">
-                  <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
-                     {lang.toUpperCase()}
-                  </button>
-                  <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">
-                     i
-                  </button>
-               </div>
-               <div className="h-4 w-px bg-white/10 hidden sm:block" />
+            <div className="flex items-center gap-3">
+               <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">{lang.toUpperCase()}</button>
+               <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">i</button>
+               <div className="h-4 w-px bg-white/10" />
                <div>
                   <span className="text-slate-400 text-[10px] uppercase tracking-widest">{lang === 'en' ? 'Phase:' : 'Fase:'}</span>
-                  <span className="ml-2 font-bold uppercase tracking-widest text-moon-400 text-xs sm:text-sm">{room.phase.replace('_', ' ')}</span>
+                  <span className="ml-2 font-bold uppercase tracking-widest text-moon-400 text-xs">{room.phase.replace('_', ' ')}</span>
                </div>
             </div>
-            <div className="flex items-center gap-4 sm:gap-6 w-full sm:w-auto justify-center sm:justify-end">
-               <div className="bg-forest-900 border border-white/10 px-4 sm:px-6 py-2 sm:py-3 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(167,139,250,0.1)]">
-                  <span className="text-slate-400 text-[8px] sm:text-[10px] uppercase tracking-[0.2em] mb-0.5 sm:mb-1 font-bold">Total Players</span>
-                  <span className="text-2xl sm:text-3xl font-serif text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">{actualPlayers.length}</span>
+            <div className="flex items-center gap-6">
+               <div className="bg-forest-900 border border-white/10 px-6 py-2 rounded-xl flex flex-col items-center justify-center">
+                  <span className="text-slate-400 text-[10px] uppercase tracking-widest font-bold">Players</span>
+                  <span className="text-2xl font-serif text-white">{actualPlayers.length}</span>
                </div>
-               <div className="h-10 w-px bg-white/10" />
                <div className="flex flex-col">
-                  <span className="text-slate-400 text-[8px] sm:text-[10px] uppercase tracking-[0.2em] mb-0.5 sm:mb-1 font-bold">{lang === 'en' ? 'Alive:' : 'Sisa:'}</span>
-                  <span className="font-bold text-lg sm:text-xl text-moon-400 leading-tight">{alivePlayers.length}/{actualPlayers.length}</span>
+                  <span className="text-slate-400 text-[10px] uppercase tracking-widest font-bold">{lang === 'en' ? 'Alive:' : 'Sisa:'}</span>
+                  <span className="font-bold text-xl text-moon-400">{alivePlayers.length}/{actualPlayers.length}</span>
                </div>
             </div>
          </div>
 
          <div className="w-full max-w-5xl flex flex-col md:flex-row gap-6">
-
-            {/* Left Col: Player List Admin */}
             <div className="w-full md:w-1/3 order-2 md:order-1 glass-panel rounded-2xl p-4 flex flex-col max-h-[80vh]">
                <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/10 pb-2">{lang === 'en' ? 'Master Roster' : 'Pemain'}</h3>
                <ul className="space-y-2 overflow-y-auto flex-1 pr-2">
@@ -617,18 +489,13 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                               <span className="text-xs text-wolf-600 font-bold uppercase tracking-widest">{lang === 'en' ? 'Dead' : 'Mati'}</span>
                            )}
                         </div>
-                        {player.role && player.role !== 'unassigned' && (
-                           <div className="text-moon-400 text-xs">Role: {lang === 'en' ? ROLES[player.role]?.name : ROLES[player.role]?.name_id}</div>
-                        )}
+                        {player.role && <div className="text-moon-400 text-xs">Role: {lang === 'en' ? ROLES[player.role]?.name : ROLES[player.role]?.name_id}</div>}
                      </li>
                   ))}
                </ul>
             </div>
 
-            {/* Main Admin Area */}
             <div className="w-full md:w-2/3 order-1 md:order-2 glass-panel rounded-2xl flex flex-col h-full">
-
-               {/* Top Toolbar */}
                <div className="p-4 border-b border-white/10 flex justify-center gap-2 flex-wrap">
                   <Button variant={room.phase.includes('night') ? 'primary' : 'secondary'} size="sm" onClick={() => changePhase('night_transition')}>{lang === 'en' ? 'Start Night' : 'Malam'}</Button>
                   <Button variant={room.phase === 'day' ? 'primary' : 'secondary'} size="sm" onClick={() => changePhase('day')}>{lang === 'en' ? 'Start Day' : 'Siang'}</Button>
@@ -636,186 +503,91 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                   <Button variant="danger" size="sm" onClick={() => changePhase('ended')}>{lang === 'en' ? 'End Game' : 'Akhiri'}</Button>
                </div>
 
-               {/* Smart Assistant View */}
                <div className="flex-1 flex flex-col p-6 min-h-[400px]">
                   {room.phase.includes('night') && renderNightAssistant()}
-
                   {room.phase === 'day' && (
                      <div className="flex-1 flex flex-col items-center justify-center text-center">
                         <h3 className="text-3xl font-serif text-moon-200 mb-4">{lang === 'en' ? 'Day Phase' : 'Siang Hari'}</h3>
-                        
-                        {/* Night Resolution UI */}
-                        {(() => {
-                           if (room.settings?.werewolfTargetId) {
-                              const target = players.find(p => p.id === room.settings.werewolfTargetId);
-                              const wasProtected = target?.id === room.settings.lastProtectedPlayerId;
-
-                              return (
-                                 <div className="bg-forest-900 p-6 rounded-xl border border-white/10 mb-8 w-full max-w-md">
-                                    <h4 className="text-xl text-wolf-400 font-bold mb-2">
-                                       {lang === 'en' ? 'Night Attack Result' : 'Hasil Serangan Malam'}
-                                    </h4>
-                                    <p className="text-white mb-4">
-                                       {lang === 'en' ? `The Werewolves attacked ` : `Werewolf menyerang `}
-                                       <span className="font-bold text-lg">{target?.name || 'Unknown'}</span>.
-                                    </p>
-                                    {wasProtected ? (
-                                       <>
-                                          <p className="text-moon-400 font-bold mb-6 text-lg animate-pulse">
-                                             {lang === 'en' ? 'They were PROTECTED by the Bodyguard!' : 'Dia DILINDUNGI oleh Bodyguard!'}
-                                          </p>
-                                          <Button size="lg" onClick={async () => {
-                                             await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
-                                          }}>
-                                             {lang === 'en' ? 'Acknowledge' : 'Mengerti'}
-                                          </Button>
-                                       </>
-                                    ) : (
-                                       <div className="flex flex-col sm:flex-row gap-3 w-full mt-6">
-                                          <Button variant="danger" className="w-full" onClick={async () => {
-                                             if (target) await killPlayer(target.id, false, 'werewolf');
-                                             await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
-                                          }}>
-                                             {lang === 'en' ? 'Confirm Kill' : 'Konfirmasi Kematian'}
-                                          </Button>
-                                          <Button variant="secondary" className="w-full" onClick={async () => {
-                                             await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
-                                          }}>
-                                             {lang === 'en' ? 'Cancel / Undo' : 'Batal / Anulir'}
-                                          </Button>
-                                       </div>
-                                    )}
-                                 </div>
-                              );
-                           }
-                           return null;
-                        })()}
-
-                        {!room.settings?.werewolfTargetId && (
+                        {room.settings?.werewolfTargetId ? (
+                           <div className="bg-forest-900 p-6 rounded-xl border border-white/10 mb-8 w-full max-w-md">
+                              <h4 className="text-xl text-wolf-400 font-bold mb-2">{lang === 'en' ? 'Night Attack' : 'Serangan Malam'}</h4>
+                              <p className="text-white mb-6">
+                                 {players.find(p => p.id === room.settings.werewolfTargetId)?.name} was targeted. 
+                                 {players.find(p => p.id === room.settings.werewolfTargetId)?.id === room.settings.lastProtectedPlayerId && <span className="text-moon-400 font-bold block mt-2 animate-pulse">PROTECTED BY BODYGUARD!</span>}
+                              </p>
+                              <div className="flex gap-3">
+                                 <Button variant="danger" className="flex-1" onClick={async () => {
+                                    if (room.settings.werewolfTargetId) await killPlayer(room.settings.werewolfTargetId, false, 'werewolf');
+                                    await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null } }).eq('id', room.id);
+                                 }}>{lang === 'en' ? 'Confirm Kill' : 'Konfirmasi'}</Button>
+                                 <Button variant="secondary" className="flex-1" onClick={async () => {
+                                    await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null } }).eq('id', room.id);
+                                 }}>{lang === 'en' ? 'Cancel' : 'Batal'}</Button>
+                              </div>
+                           </div>
+                        ) : (
                            <>
-                              <p className="text-lg text-slate-400 mb-8">{lang === 'en' ? 'Let the village discuss and debate.' : 'Biarin warga diskusi buat cari tau siapa serigalanya.'}</p>
-                              <Button size="lg" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Open Voting' : 'Buka Voting'}</Button>
+                              <p className="text-lg text-slate-400 mb-8">
+                                 {room.settings?.pacifistActive ? (lang === 'en' ? 'Peace has been chosen. Voting is skipped.' : 'Perdamaian dipilih. Voting dilewati.') : (lang === 'en' ? 'Let the village discuss and debate.' : 'Biarin warga diskusi.')}
+                              </p>
+                              {!room.settings?.pacifistActive && <Button size="lg" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Open Voting' : 'Buka Voting'}</Button>}
+                              {room.settings?.pacifistActive && <Button size="lg" onClick={() => changePhase('night_transition')}>{lang === 'en' ? 'Proceed to Night' : 'Lanjut ke Malam'}</Button>}
                            </>
                         )}
                      </div>
                   )}
-
                   {room.phase === 'hunter_revenge' && (
                      <div className="flex-1 flex flex-col items-center justify-center text-center">
-                        <h3 className="text-3xl font-serif text-wolf-400 mb-4">{lang === 'en' ? 'Hunter\'s Revenge' : 'Balas Dendam Hunter'}</h3>
-                        <p className="text-lg text-slate-400 mb-8">{lang === 'en' ? 'Waiting for the Hunter to shoot...' : 'Menunggu Hunter menembak...'}</p>
-                        
+                        <h3 className="text-3xl font-serif text-wolf-400 mb-4">{lang === 'en' ? 'Hunter\'s Revenge' : 'Balas Dendam'}</h3>
                         {(() => {
                            const hunter = players.find(p => p.role === 'hunter');
-                           const target = hunter?.action_target_id ? players.find(p => p.id === hunter.action_target_id) : null;
-                           
-                           if (target) {
-                              return (
-                                 <div className="bg-forest-900 p-6 rounded-xl border border-white/10 mb-8">
-                                    <p className="text-xl text-white mb-4">
-                                       {lang === 'en' ? `Hunter aims at: ` : `Hunter membidik: `} 
-                                       <span className="font-bold text-wolf-400">{target.name}</span>
-                                    </p>
-                                    <Button variant="danger" size="lg" onClick={async () => {
-                                       await killPlayer(target.id);
-                                       if (hunter) await supabase.from('players').update({ action_target_id: null }).eq('id', hunter.id);
-                                       await supabase.from('rooms').update({ phase: room.settings?.phaseBeforeRevenge || 'day' }).eq('id', room.id);
-                                    }}>
-                                       {lang === 'en' ? 'Confirm Shot' : 'Konfirmasi Tembakan'}
-                                    </Button>
-                                 </div>
-                              );
-                           }
-                           return null;
+                           const target = players.find(p => p.id === hunter?.action_target_id);
+                           return target ? (
+                              <div className="bg-forest-900 p-6 rounded-xl border border-white/10">
+                                 <p className="text-xl text-white mb-6">Hunter shoots: <span className="font-bold text-wolf-400">{target.name}</span></p>
+                                 <Button variant="danger" onClick={async () => {
+                                    await killPlayer(target.id);
+                                    if (hunter) await supabase.from('players').update({ action_target_id: null }).eq('id', hunter.id);
+                                    await supabase.from('rooms').update({ phase: room.settings.phaseBeforeRevenge }).eq('id', room.id);
+                                 }}>{lang === 'en' ? 'Confirm' : 'Konfirmasi'}</Button>
+                              </div>
+                           ) : <p className="text-slate-400 italic">Waiting for Hunter...</p>;
                         })()}
                      </div>
                   )}
-
                   {room.phase === 'voting' && (
                      <div className="flex-1 flex flex-col max-w-lg w-full mx-auto">
-                        <div className="text-center mb-6">
-                           <h3 className="text-3xl font-serif text-moon-200 mb-1">{lang === 'en' ? 'Live Vote Tally' : 'Hasil Voting'}</h3>
-                           <p className="text-sm text-slate-400">{lang === 'en' ? 'Total votes cast:' : 'Total Suara Masuk:'} {validVotes.length} / {alivePlayers.length}</p>
-                        </div>
-
-                        {validVotes.length === 0 ? (
-                           <div className="flex-1 flex items-center justify-center text-slate-500 italic">
-                              {lang === 'en' ? 'Waiting for players to vote...' : 'Lagi nunggu pada milih...'}
-                           </div>
-                        ) : (
-                           <div className="flex-1 overflow-y-auto space-y-4">
-                              {groupedVotes.map(({ target, voters }) => (
-                                 <div key={target?.id || Math.random()} className="bg-forest-900 border border-white/10 p-4 rounded-xl flex items-center justify-between">
-                                    <div>
-                                       <h4 className="text-xl font-bold text-white mb-1"><span className="text-wolf-400 mr-2">{voters.length}</span> {target?.name || (lang === 'en' ? 'No Elimination' : 'Tidak Ada Eliminasi')}</h4>
-                                       <p className="text-xs text-slate-400">Voters: {voters.join(', ')}</p>
-                                    </div>
-                                    {target?.alive ? (
-                                       <button
-                                          onClick={() => resolveVoting(target)}
-                                          className="ml-4 bg-wolf-950 text-wolf-400 border border-wolf-500/50 hover:bg-wolf-900 px-4 py-2 rounded text-sm font-bold transition-colors uppercase tracking-widest"
-                                       >
-                                          {lang === 'en' ? 'Eliminate' : 'Eliminasi'}
-                                       </button>
-                                    ) : !target ? (
-                                       <button
-                                          onClick={() => changePhase('night_transition')}
-                                          className="ml-4 bg-moon-950 text-moon-400 border border-moon-500/50 hover:bg-moon-900 px-4 py-2 rounded text-sm font-bold transition-colors uppercase tracking-widest"
-                                       >
-                                          {lang === 'en' ? 'Confirm Skip' : 'Konfirmasi Lewati'}
-                                       </button>
-                                    ) : null}
+                        <h3 className="text-center text-2xl font-serif text-moon-200 mb-6">{lang === 'en' ? 'Vote Tally' : 'Hasil Voting'}</h3>
+                        <div className="space-y-4 overflow-y-auto flex-1">
+                           {groupedVotes.map(({ target, voters }) => (
+                              <div key={target?.id || 'none'} className="bg-forest-900 border border-white/10 p-4 rounded-xl flex items-center justify-between">
+                                 <div>
+                                    <h4 className="font-bold text-white"><span className="text-wolf-400 mr-2">{voters.length}</span> {target?.name || 'No Elimination'}</h4>
+                                    <p className="text-xs text-slate-500">{voters.join(', ')}</p>
                                  </div>
-                              ))}
-                           </div>
-                        )}
+                                 <motion.button 
+                                    whileHover={{ scale: 1.05, boxShadow: '0 0 15px rgba(239, 68, 68, 0.4)' }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => target ? resolveVoting(target) : changePhase('night_transition')}
+                                    className={`px-4 py-2 rounded text-xs font-bold uppercase tracking-widest ${target ? 'bg-wolf-950 text-wolf-400 border border-wolf-500/50' : 'bg-moon-950 text-moon-400 border border-moon-500/50'} cursor-pointer`}
+                                 >
+                                    {target ? (lang === 'en' ? 'Eliminate' : 'Eliminasi') : (lang === 'en' ? 'Confirm' : 'Konfirmasi')}
+                                 </motion.button>
+                              </div>
+                           ))}
+                        </div>
                      </div>
                   )}
-
                   {room.phase === 'ended' && (
                      <div className="flex-1 flex flex-col items-center justify-center text-center">
-                        <h3 className="text-4xl font-serif mb-4 text-white">Game Over</h3>
-                        {room.settings?.winner === 'village' && (
-                           <p className="text-2xl text-emerald-400 mb-8 uppercase tracking-widest font-bold">{lang === 'en' ? 'The Village Wins' : 'Warga Menang!'}</p>
-                        )}
-                        {room.settings?.winner === 'werewolf' && (
-                           <p className="text-2xl text-wolf-500 mb-8 uppercase tracking-widest font-bold">{lang === 'en' ? 'The Werewolves Win' : 'Serigala Menang!'}</p>
-                        )}
-                        {room.settings?.winner === 'lovers' && (
-                           <p className="text-2xl text-pink-400 mb-8 uppercase tracking-widest font-bold">{lang === 'en' ? 'The Lovers Win' : 'Pasangan Kekasih Menang!'}</p>
-                        )}
-                        {(room.settings?.winner === 'village' || room.settings?.winner === 'werewolf') && room.settings?.lovers?.length === 2 && room.settings.lovers.every((id: string) => alivePlayers.find(p => p.id === id)) && (
-                           <p className="text-xl text-pink-400 animate-pulse mb-8 italic">{lang === 'en' ? 'The Lovers also win together! 💕' : 'Pasangan Kekasih juga menang bersama! 💕'}</p>
-                        )}
-
-                        <p className="text-sm text-slate-400 max-w-sm mb-6">
-                           {lang === 'en' ? 'Return to the Lobby to restart everything and shuffle new roles for the exact same players!' : 'Balik ke lobby buat ngacak role baru ke pemain yang sama!'}
-                        </p>
-                        <div className="flex flex-col gap-4 items-center justify-center">
-                           <Button size="lg" className="w-full" onClick={() => changePhase('lobby')}>
-                              {lang === 'en' ? 'Play Again (Reset Room)' : 'Main Lagi (Reset)'}
-                           </Button>
-                           <div className="mt-4 text-center">
-                              <p className="text-xs text-amber-500/80 mb-2 max-w-sm">
-                                 {lang === 'en' ? 'Warning: Pressing this will close the lobby for everyone.' : 'Peringatan: Menekan tombol ini akan membubarkan lobby untuk semua orang.'}
-                              </p>
-                              <Button variant="danger" size="sm" onClick={async () => {
-                                 if (room) {
-                                   await supabase.from('rooms').delete().eq('id', room.id);
-                                 }
-                                 router.push('/');
-                              }}>
-                                 {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
-                              </Button>
-                           </div>
-                        </div>
+                        <h3 className="text-4xl font-serif mb-4">Game Over</h3>
+                        <p className="text-2xl text-moon-400 mb-8 uppercase font-bold">{room.settings?.winner} Wins!</p>
+                        <Button size="lg" className="w-full max-w-xs" onClick={() => changePhase('lobby')}>Play Again</Button>
                      </div>
                   )}
                </div>
-
             </div>
          </div>
-
          <RulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
       </div>
    );

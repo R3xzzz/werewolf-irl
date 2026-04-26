@@ -46,8 +46,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(classes, className)}
         ref={ref}
         disabled={disabled}
-        whileHover={!disabled ? { scale: 1.02, backgroundColor: variant === 'primary' ? '#5b21b6' : undefined } : {}}
-        whileTap={!disabled ? { scale: 0.98 } : {}}
+        whileHover={!disabled ? { 
+           scale: 1.05, 
+           boxShadow: variant === 'danger' ? '0 0 20px rgba(239, 68, 68, 0.4)' : variant === 'primary' ? '0 0 20px rgba(167, 139, 250, 0.3)' : '0 0 10px rgba(255,255,255,0.1)',
+           borderColor: variant === 'danger' ? '#ef4444' : variant === 'primary' ? '#a78bfa' : undefined,
+           backgroundColor: variant === 'danger' ? '#991b1b' : variant === 'primary' ? '#5b21b6' : undefined
+        } : {}}
+        whileTap={!disabled ? { scale: 0.95 } : {}}
         {...safeProps}
       />
     )

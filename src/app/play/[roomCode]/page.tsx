@@ -133,16 +133,18 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
 
   const myRole = ROLES[me.role];
   const actualPlayers = players.filter(p => !p.is_host);
-  const alivePlayers = actualPlayers.filter(p => {
-     if (!p.alive) return false;
+  const alivePlayers = actualPlayers.filter(p => p.alive);
+  
+  // Players that can be targeted (excluding self in most cases)
+  const targetablePlayers = alivePlayers.filter(p => {
      if (p.id === me.id) {
         if (me.role === 'bodyguard') return true;
         if (me.role === 'cupid' && room.round === 1) return true;
-        if (me.role === 'troublemaker' && room.phase === 'day' && !room.settings?.troublemakerUsed) return true;
         return false;
      }
      return true;
   });
+
   const myVote = votes.find(v => v.voter_id === me.id);
 
   const getPhaseMessage = () => {
@@ -198,7 +200,6 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      });
   };
 
-
   const confirmTrouble = async () => {
      if (troubleSelection.length !== 2) return;
      await supabase.from('rooms').update({ 
@@ -209,6 +210,9 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
         } 
      }).eq('id', room.id);
      
+     // Mark action as done for the night
+     await supabase.from('players').update({ action_target_id: troubleSelection[0] }).eq('id', me.id);
+
      sendPopup({
         type: 'popup',
         visibility: 'public',
@@ -221,74 +225,46 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      });
   };
 
-  const handleTroubleSchedule = async () => {
-     if (troubleSelection.length !== 2) return;
-     await supabase.from('rooms').update({ 
-        settings: { 
-           ...room.settings, 
-           troubleScheduled: true,
-           troubleScheduledTargets: troubleSelection,
-           troublemakerUsed: true 
-        } 
-     }).eq('id', room.id);
-     
-     sendPopup({
-        type: 'popup',
-        visibility: 'private',
-        targetId: me.id,
-        title_en: 'Skill Scheduled',
-        title_id: 'Skill Terjadwal',
-        desc_en: 'Your trouble will brew tomorrow morning.',
-        desc_id: 'Keonaranmu akan dimulai besok pagi.',
-        icon: '⏳',
-        durationMs: 6000
-     });
-  };
-
-  const handlePacifistAction = async (scheduled: boolean) => {
+  const handlePacifistAction = async (useNow: boolean) => {
      if (room.settings?.pacifistUsed) return;
      
+     if (!useNow) {
+        sendPopup({
+           type: 'popup',
+           visibility: 'private',
+           targetId: me.id,
+           title_en: 'Skill Saved',
+           title_id: 'Skill Disimpan',
+           desc_en: 'You can use your peace ability on another day.',
+           desc_id: 'Kamu bisa menggunakan kemampuan damaimu di hari lain.',
+           icon: '🛡️',
+           durationMs: 4000
+        });
+        return;
+     }
+
      const updates: any = {
         ...room.settings,
-        pacifistUsed: true
+        pacifistUsed: true,
+        pacifistActive: true
      };
-
-     if (scheduled) {
-        updates.pacifistScheduled = true;
-     } else {
-        updates.pacifistActive = true;
-     }
 
      await supabase.from('rooms').update({ settings: updates }).eq('id', room.id);
 
      sendPopup({
         type: 'popup',
-        visibility: 'private',
-        targetId: me.id,
-        title_en: scheduled ? 'Skill Scheduled' : 'Skill Activated',
-        title_id: scheduled ? 'Skill Terjadwal' : 'Skill Diaktifkan',
-        desc_en: scheduled ? 'Peace will be enforced tomorrow.' : 'You will be forced to vote for peace today.',
-        desc_id: scheduled ? 'Kedamaian akan dipaksakan besok.' : 'Kamu akan dipaksa memilih damai hari ini.',
+        visibility: 'public',
+        title_en: '☮ Peace Chosen',
+        title_id: '☮ Perdamaian Terpilih',
+        desc_en: 'No one will be eliminated today.',
+        desc_id: 'Tidak ada yang dieliminasi hari ini.',
         icon: '🕊️',
         durationMs: 6000
      });
-
-     if (!scheduled) {
-        sendPopup({
-           type: 'popup',
-           visibility: 'public',
-           title_en: 'Pacifist Plea!',
-           title_id: 'Seruan Damai!',
-           desc_en: `${me.name} is calling for peace today.`,
-           desc_id: `${me.name} menyerukan kedamaian hari ini.`,
-           icon: '🕊️',
-           durationMs: 6000
-        });
-     }
   };
 
   const handleCupidSelect = (targetId: string) => {
-     if (me?.action_target_id) return; // already confirmed
+     if (me?.action_target_id) return;
      setCupidSelection(prev => {
         if (prev.includes(targetId)) return prev.filter(id => id !== targetId);
         if (prev.length < 2) return [...prev, targetId];
@@ -342,11 +318,11 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
       <CinematicPopup popup={currentPopup} onClose={() => setCurrentPopup(null)} />
       <AnimatePresence>
          {(room.phase === 'night_transition' || room.phase === 'day_transition') && (
-           <PhaseTransition phase={room.phase} lang={lang} />
+            <PhaseTransition phase={room.phase} lang={lang} />
          )}
       </AnimatePresence>
 
-      {/* Game Over Screen Overlay */}
+      {/* Game Over Screen */}
       <AnimatePresence>
          {room.phase === 'ended' && room.settings?.winner && (
             <motion.div 
@@ -376,19 +352,6 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                   <p className="text-2xl text-slate-300 font-serif mb-2">
                      {room.settings.winner === 'village' ? (lang === 'en' ? 'The Village Survives' : 'Warga Desa Selamat') : room.settings.winner === 'lovers' ? (lang === 'en' ? 'The Lovers Survived Together' : 'Kekasih Selamat Bersama') : (lang === 'en' ? 'The Werewolves Hunted Everyone' : 'Manusia Serigala Menguasai Desa')}
                   </p>
-                  {(room.settings.winner === 'village' || room.settings.winner === 'werewolf') && room.settings?.lovers?.length === 2 && room.settings.lovers.every((id: string) => actualPlayers.find(p => p.id === id)?.alive) && (
-                     <p className="text-xl text-pink-400 font-serif mb-2 italic animate-pulse">
-                        {lang === 'en' ? 'The Lovers also win together! 💕' : 'Pasangan Kekasih juga menang bersama! 💕'}
-                     </p>
-                  )}
-                  <div className="mt-12 mb-8">
-                     <p className="text-sm text-slate-500 uppercase tracking-widest animate-pulse mb-2">
-                        {lang === 'en' ? 'WAITING FOR HOST TO CLOSE LOBBY...' : 'MENUNGGU HOST...'}
-                     </p>
-                     <p className="text-xs text-amber-500/80 max-w-xs mx-auto">
-                        {lang === 'en' ? 'If you still want to play the next round, DO NOT press this button!' : 'Kalau masih mau main ronde selanjutnya, JANGAN pencet tombol ini!'}
-                     </p>
-                  </div>
                   <Button 
                     variant="danger" 
                     size="sm" 
@@ -438,87 +401,126 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
            <>
               <p className="text-xl text-slate-300 mb-8 min-h-[60px]">{getPhaseMessage()}</p>
               
+              {/* Night Action Block */}
               {room.phase === 'night' && (room.settings?.activeNightRole === me.role || myRole?.isAlwaysAwakeWith?.includes(room.settings?.activeNightRole)) && (
                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
                     <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
                        {lang === 'en' ? 'Make your move' : 'Pilih targetmu'}
                     </h3>
-                     <ul className="space-y-2">
-                      {alivePlayers.map(p => {
-                         let isSelected = false;
-                         let isConvertTarget = false;
-                         if (me.role === 'cupid' && room.round === 1) {
-                            isSelected = cupidSelection.includes(p.id);
-                         } else if (me.role === 'alpha_wolf') {
-                            isSelected = me.action_target_id === p.id && room.settings?.alphaConvertTargetId !== p.id;
-                            isConvertTarget = me.action_target_id === p.id && room.settings?.alphaConvertTargetId === p.id;
-                         } else {
-                            isSelected = me.action_target_id === p.id;
-                         }
+                    
+                    {me.role === 'troublemaker' && !room.settings?.troublemakerUsed ? (
+                       <div className="space-y-4">
+                          <p className="text-xs text-slate-400">
+                             {lang === 'en' ? 'Select 2 players to restrict tomorrow\'s vote.' : 'Pilih 2 pemain untuk membatasi voting besok.'}
+                          </p>
+                          <ul className="space-y-2 max-h-60 overflow-y-auto">
+                             {alivePlayers.filter(p => p.id !== me.id).map(p => {
+                                const isSelected = troubleSelection.includes(p.id);
+                                return (
+                                   <li key={p.id}>
+                                      <button
+                                         onClick={() => handleTroubleSelect(p.id)}
+                                         className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500' : 'bg-forest-950 border border-white/5'}`}
+                                      >
+                                         <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                         {isSelected && <span className="text-xs text-moon-200 uppercase">Selected</span>}
+                                      </button>
+                                   </li>
+                                )
+                             })}
+                          </ul>
+                          <div className="flex gap-2 pt-2">
+                             <Button className="flex-1 h-12" disabled={troubleSelection.length !== 2} onClick={confirmTrouble}>
+                                {lang === 'en' ? 'Gunakan Skill Sekarang' : 'Gunakan Skill Sekarang'}
+                             </Button>
+                             <Button variant="secondary" className="flex-1 h-12" onClick={async () => {
+                                setTroubleSelection([]);
+                                await supabase.from('players').update({ action_target_id: 'SKIPPED' }).eq('id', me.id);
+                                sendPopup({
+                                   type: 'popup', visibility: 'private', targetId: me.id,
+                                   title_en: 'Skill Saved', title_id: 'Skill Disimpan',
+                                   desc_en: 'You can use it on another night.', desc_id: 'Kamu bisa menggunakannya di malam lain.',
+                                   icon: '🛡️', durationMs: 4000
+                                });
+                             }}>
+                                {lang === 'en' ? 'Simpan Untuk Nanti' : 'Simpan Untuk Nanti'}
+                             </Button>
+                          </div>
+                       </div>
+                    ) : (
+                       <ul className="space-y-2">
+                         {targetablePlayers.map(p => {
+                            let isSelected = false;
+                            let isConvertTarget = false;
+                            if (me.role === 'cupid' && room.round === 1) {
+                               isSelected = cupidSelection.includes(p.id);
+                            } else if (me.role === 'alpha_wolf') {
+                               isSelected = me.action_target_id === p.id && room.settings?.alphaConvertTargetId !== p.id;
+                               isConvertTarget = me.action_target_id === p.id && room.settings?.alphaConvertTargetId === p.id;
+                            } else {
+                               isSelected = me.action_target_id === p.id;
+                            }
+   
+                            const otherWolvesTargeting = myRole?.team === 'werewolf' ? actualPlayers.filter(w => ROLES[w.role]?.team === 'werewolf' && w.id !== me.id && w.action_target_id === p.id) : [];
+                            const isConsecutiveBodyguard = me.role === 'bodyguard' && room.settings?.mode === 'competitive' && room.settings?.lastProtectedPlayerId === p.id;
+                            
+                            return (
+                              <li key={p.id}>
+                                {me.role === 'alpha_wolf' ? (
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                         if (room.settings?.alphaConvertTargetId) {
+                                            supabase.from('rooms').update({ settings: { ...room.settings, alphaConvertTargetId: null } }).eq('id', room.id);
+                                         }
+                                         castNightAction(p.id);
+                                      }}
+                                      className={`flex-1 p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
+                                    >
+                                      <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                      {isSelected && <span className="text-[10px] uppercase text-wolf-400">Kill</span>}
+                                    </button>
+                                    <button
+                                      onClick={() => handleAlphaWolfConvert(p.id)}
+                                      disabled={room.settings?.alphaConverted}
+                                      className={`px-4 py-3 rounded-lg transition-all ${isConvertTarget ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${room.settings?.alphaConverted ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                    >
+                                      <span className={`font-bold ${isConvertTarget ? 'text-white' : 'text-slate-300'}`}>{lang === 'en' ? 'Convert' : 'Ubah'}</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    disabled={isConsecutiveBodyguard}
+                                    onClick={() => (me.role === 'cupid' && room.round === 1) ? handleCupidSelect(p.id) : castNightAction(p.id)}
+                                    className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${isConsecutiveBodyguard ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                  >
+                                     <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                                        {me.role === 'bodyguard' && p.id === me.id ? (lang === 'en' ? 'Protect Yourself' : 'Lindungi Diri Sendiri') : p.name}
+                                        {isConsecutiveBodyguard && <span className="ml-2 text-[10px] uppercase text-wolf-500">Protected Last Night</span>}
+                                     </span>
+                                     <div className="flex items-center gap-2">
+                                       {otherWolvesTargeting.length > 0 && (
+                                          <div className="flex -space-x-1">
+                                            {otherWolvesTargeting.map(w => (
+                                               <div key={w.id} className="w-5 h-5 rounded-full bg-wolf-600 border border-black text-[9px] flex items-center justify-center font-bold text-white shadow-sm" title={w.name}>
+                                                 {w.name.charAt(0).toUpperCase()}
+                                               </div>
+                                            ))}
+                                          </div>
+                                       )}
+                                       {isSelected && <span className="text-xs uppercase tracking-widest text-moon-200">{lang === 'en' ? 'Selected' : 'Terpilih'}</span>}
+                                     </div>
+                                  </button>
+                                )}
+                              </li>
+                            )
+                         })}
+                       </ul>
+                    )}
 
-                         const otherWolvesTargeting = myRole?.team === 'werewolf' ? actualPlayers.filter(w => ROLES[w.role]?.team === 'werewolf' && w.id !== me.id && w.action_target_id === p.id) : [];
-                         const isConsecutiveBodyguard = me.role === 'bodyguard' && room.settings?.mode === 'competitive' && room.settings?.lastProtectedPlayerId === p.id;
-                         const canConvert = me.role === 'alpha_wolf' && !room.settings?.alphaConverted;
-                         
-                         return (
-                           <li key={p.id}>
-                              {me.role === 'alpha_wolf' ? (
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => {
-                                       if (room.settings?.alphaConvertTargetId) {
-                                          supabase.from('rooms').update({ settings: { ...room.settings, alphaConvertTargetId: null } }).eq('id', room.id);
-                                       }
-                                       castNightAction(p.id);
-                                    }}
-                                    className={`flex-1 p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
-                                  >
-                                    <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
-                                    {isSelected && <span className="text-[10px] uppercase text-wolf-400">Kill</span>}
-                                  </button>
-                                  <button
-                                    onClick={() => handleAlphaWolfConvert(p.id)}
-                                    disabled={!canConvert}
-                                    className={`px-4 py-3 rounded-lg transition-all ${isConvertTarget ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${!canConvert ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                  >
-                                    <span className={`font-bold ${isConvertTarget ? 'text-white' : 'text-slate-300'}`}>{lang === 'en' ? 'Convert' : 'Ubah'}</span>
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  disabled={isConsecutiveBodyguard}
-                                  onClick={() => (me.role === 'cupid' && room.round === 1) ? handleCupidSelect(p.id) : castNightAction(p.id)}
-                                  className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${isConsecutiveBodyguard ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                >
-                                   <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
-                                      {me.role === 'bodyguard' && p.id === me.id ? (lang === 'en' ? 'Protect Yourself' : 'Lindungi Diri Sendiri') : p.name}
-                                      {isConsecutiveBodyguard && <span className="ml-2 text-[10px] uppercase text-wolf-500">Protected Last Night</span>}
-                                   </span>
-                                   <div className="flex items-center gap-2">
-                                     {otherWolvesTargeting.length > 0 && (
-                                        <div className="flex -space-x-1">
-                                          {otherWolvesTargeting.map(w => (
-                                             <div key={w.id} className="w-5 h-5 rounded-full bg-wolf-600 border border-black text-[9px] flex items-center justify-center font-bold text-white shadow-sm" title={w.name}>
-                                               {w.name.charAt(0).toUpperCase()}
-                                             </div>
-                                          ))}
-                                        </div>
-                                     )}
-                                     {isSelected && <span className="text-xs uppercase tracking-widest text-moon-200">{lang === 'en' ? 'Selected' : 'Terpilih'}</span>}
-                                   </div>
-                                </button>
-                              )}
-                           </li>
-                         )
-                      })}
-                    </ul>
                     {me.role === 'cupid' && room.round === 1 && (
                        <div className="mt-4 pt-4 border-t border-white/5">
-                          <Button 
-                             className="w-full" 
-                             disabled={cupidSelection.length !== 2 || !!me.action_target_id}
-                             onClick={confirmCupidLovers}
-                          >
+                          <Button className="w-full" disabled={cupidSelection.length !== 2 || !!me.action_target_id} onClick={confirmCupidLovers}>
                              {me.action_target_id ? (lang === 'en' ? 'Confirmed' : 'Terkonfirmasi') : (lang === 'en' ? 'Confirm Lovers' : 'Konfirmasi Pasangan')}
                           </Button>
                        </div>
@@ -526,36 +528,25 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                  </motion.div>
               )}
 
-              {room.phase === 'hunter_revenge' && (
-                 <div className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
-                    <h3 className="font-serif text-lg mb-4 text-wolf-400 border-b border-white/5 pb-2">
-                       {lang === 'en' ? 'Hunter\'s Revenge' : 'Balas Dendam Hunter'}
+              {/* Pacifist Day Block */}
+              {room.phase === 'day' && me.role === 'pacifist' && !room.settings?.pacifistUsed && (
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
+                       {lang === 'en' ? 'Pacifist Ability' : 'Kemampuan Pacifist'}
                     </h3>
-                    {me.role === 'hunter' ? (
-                       <ul className="space-y-2">
-                          {alivePlayers.map(p => {
-                             const isSelected = me.action_target_id === p.id;
-                             return (
-                                <li key={p.id}>
-                                   <button
-                                      onClick={() => castNightAction(p.id)}
-                                      className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
-                                   >
-                                      <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
-                                      {isSelected && <span className="text-xs uppercase tracking-widest text-wolf-400">{lang === 'en' ? 'Targeted' : 'Ditargetkan'}</span>}
-                                   </button>
-                                </li>
-                             )
-                          })}
-                       </ul>
-                    ) : (
-                       <p className="text-slate-400 italic">
-                          {lang === 'en' ? 'The Hunter is taking aim...' : 'Hunter sedang membidik targetnya...'}
-                       </p>
-                    )}
-                 </div>
+                    <p className="text-xs text-slate-400 mb-4">{lang === 'en' ? 'Choose to skip all eliminations today.' : 'Pilih untuk meniadakan eliminasi hari ini.'}</p>
+                    <div className="flex flex-col gap-3">
+                       <Button className="w-full h-12" onClick={() => handlePacifistAction(true)}>
+                          {lang === 'en' ? 'Gunakan Skill Sekarang' : 'Gunakan Skill Sekarang'}
+                       </Button>
+                       <Button variant="secondary" className="w-full h-10 opacity-70" onClick={() => handlePacifistAction(false)}>
+                          {lang === 'en' ? 'Simpan Untuk Hari Lain' : 'Simpan Untuk Hari Lain'}
+                       </Button>
+                    </div>
+                 </motion.div>
               )}
 
+              {/* Voting Phase */}
               {room.phase === 'voting' && (
                  <div className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
                     <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
@@ -565,8 +556,6 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                       {[...alivePlayers, { id: null, name: lang === 'en' ? 'No Elimination' : 'Tidak Ada Eliminasi' }].map(p => {
                          const isSelected = myVote?.target_id === p.id;
                          const isTroubleCandidate = !room.settings?.troubleCandidates || room.settings.troubleCandidates.includes(p.id) || p.id === null;
-                         
-                         // Pacifist logic: if peace exists, they can ONLY vote peace
                          const isPacifistRestricted = me.role === 'pacifist' && room.settings?.pacifistActive && p.id !== null;
 
                          const isDisabled = isCastingVote || 
@@ -595,112 +584,15 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                  </div>
               )}
 
-              {room.phase === 'day' && me.role === 'troublemaker' && !room.settings?.troublemakerUsed && (
-                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
-                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
-                       {lang === 'en' ? 'Stir up trouble' : 'Buat Keonaran'}
-                    </h3>
-                    <p className="text-xs text-slate-400 mb-4">{lang === 'en' ? 'Select 2 players to restrict today\'s vote to only them.' : 'Pilih 2 pemain untuk membatasi voting hari ini hanya ke mereka.'}</p>
-                    <ul className="space-y-2">
-                       {alivePlayers.map(p => {
-                          const isSelected = troubleSelection.includes(p.id);
-                          return (
-                             <li key={p.id}>
-                                <button
-                                   onClick={() => handleTroubleSelect(p.id)}
-                                   className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
-                                >
-                                   <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
-                                   {isSelected && <span className="text-xs uppercase tracking-widest text-moon-200">{lang === 'en' ? 'Selected' : 'Terpilih'}</span>}
-                                </button>
-                             </li>
-                          )
-                       })}
-                    </ul>
-                    <div className="flex gap-3 mt-4">
-                       <Button 
-                          className="flex-1" 
-                          disabled={troubleSelection.length !== 2}
-                          onClick={confirmTrouble}
-                       >
-                          {lang === 'en' ? 'Use Today' : 'Hari Ini'}
-                       </Button>
-                       <Button 
-                          variant="secondary"
-                          className="flex-1" 
-                          disabled={troubleSelection.length !== 2}
-                          onClick={handleTroubleSchedule}
-                       >
-                          {lang === 'en' ? 'Tomorrow' : 'Esok Hari'}
-                       </Button>
-                    </div>
-                 </motion.div>
-              )}
-
-              {room.phase === 'day' && me.role === 'pacifist' && !room.settings?.pacifistUsed && (
-                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
-                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
-                       {lang === 'en' ? 'Pacifist Plea' : 'Seruan Damai'}
-                    </h3>
-                    <p className="text-xs text-slate-400 mb-4">{lang === 'en' ? 'Use your ability to force yourself to vote for peace.' : 'Gunakan kemampuanmu untuk memaksa dirimu memilih kedamaian.'}</p>
-                    <div className="flex gap-3">
-                       <Button 
-                          className="flex-1" 
-                          onClick={() => handlePacifistAction(false)}
-                       >
-                          {lang === 'en' ? 'Use Today' : 'Hari Ini'}
-                       </Button>
-                       <Button 
-                          variant="secondary"
-                          className="flex-1" 
-                          onClick={() => handlePacifistAction(true)}
-                       >
-                          {lang === 'en' ? 'Tomorrow' : 'Esok Hari'}
-                       </Button>
-                    </div>
-                 </motion.div>
-              )}
-
-               {room.phase === 'night' && me.role === 'mason' && room.round === 1 && (
-                 <div className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
-                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
-                       {lang === 'en' ? 'Your Fellow Masons' : 'Saudara Masonmu'}
-                    </h3>
-                    <ul className="space-y-2">
-                      {actualPlayers.filter(p => p.role === 'mason' && p.id !== me.id).length > 0 ? (
-                         actualPlayers.filter(p => p.role === 'mason' && p.id !== me.id).map(p => (
-                            <li key={p.id} className="p-3 bg-forest-950 rounded-lg border border-white/5">
-                               <span className="font-bold text-slate-300">{p.name}</span>
-                            </li>
-                         ))
-                      ) : (
-                         <li className="text-slate-400 italic">
-                            {lang === 'en' ? 'You are the only Mason.' : 'Kamu adalah satu-satunya Mason.'}
-                         </li>
-                      )}
-                    </ul>
-                 </div>
-               )}
-
-              {room.phase !== 'lobby' && !myRole && (
-                 <div className="flex flex-col items-center justify-center p-16 glass-panel rounded-2xl animate-pulse w-full max-w-sm border-2 border-moon-400/20 mx-auto">
-                    <div className="w-12 h-12 rounded-full border-b-2 border-moon-400 animate-spin mb-4" />
-                    <p className="text-moon-400 font-serif tracking-widest uppercase text-sm">
-                      {lang === 'en' ? 'Receiving Role' : 'Menerima Peran'}
-                    </p>
-                 </div>
-              )}
-              
-              {room.phase !== 'lobby' && myRole && room.phase !== 'voting' && (
-                 <div className="w-full max-w-sm relative group perspective-1000 mx-auto">
-                    {/* Role Card Flip Animation */}
+              {/* Role Card */}
+              {myRole && (
+                 <div className="w-full max-w-sm relative perspective-1000 mx-auto mt-8">
                     <motion.div 
                       className="w-full aspect-[2.5/3.5] relative preserve-3d cursor-pointer"
                       onClick={() => setRoleRevealed(!roleRevealed)}
                       animate={{ rotateY: roleRevealed ? 180 : 0 }}
                       transition={{ duration: 0.6, type: "spring", bounce: 0.4 }}
                     >
-                       {/* Front (Card back) */}
                        <div className="absolute inset-0 backface-hidden glass-panel rounded-2xl flex flex-col items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.5)] border-2 border-white/10 z-10 bg-[#0f172a]">
                           <div className="w-16 h-16 rounded-full border-2 border-moon-400/30 flex items-center justify-center mb-4">
                             <span className="text-2xl text-moon-400/50">?</span>
@@ -710,24 +602,18 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                           </p>
                        </div>
 
-                       {/* Back (Role Face) */}
                        <div className="absolute inset-0 backface-hidden [transform:rotateY(180deg)] rounded-2xl flex flex-col items-center p-6 border-2 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden bg-forest-900"
                             style={{ borderColor: myRole.team === 'werewolf' ? 'rgba(239,68,68,0.3)' : 'rgba(167,139,250,0.3)'}}>
-                          
-                          {/* Background Glow */}
                           <div className={`absolute -top-20 -left-20 w-40 h-40 blur-[80px] ${myRole.team === 'werewolf' ? 'bg-wolf-600' : 'bg-moon-600'}`} />
-
                           <h2 className="relative z-10 font-serif text-3xl mb-2 mt-4 text-white">
                             {lang === 'en' ? myRole.name : myRole.name_id}
                           </h2>
                           <div className={`relative z-10 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-6 ${myRole.team === 'werewolf' ? 'bg-wolf-900/50 text-wolf-200 border-wolf-500' : myRole.team === 'neutral' ? 'bg-slate-800 text-slate-300' : 'bg-moon-900/50 text-moon-200 border-moon-400'} border`}>
                             {lang === 'en' ? 'Team' : 'Tim'} {myRole.team}
                           </div>
-
                           <p className="relative z-10 text-sm text-slate-300 text-center leading-relaxed flex-1">
                              {lang === 'en' ? myRole.description : myRole.desc_id}
                           </p>
-                          
                           <p className="relative z-10 text-xs text-slate-500 mt-4 uppercase tracking-widest">
                              {lang === 'en' ? 'Tap to Hide' : 'Sentuh untuk Menutup'}
                           </p>
@@ -737,7 +623,6 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
               )}
            </>
          )}
-
       </div>
 
       <RulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
