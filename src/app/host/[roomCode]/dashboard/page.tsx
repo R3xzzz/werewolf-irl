@@ -64,6 +64,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
    };
 
    const confirmNightAction = async (currentRoleAction: any, rolePlayers: any[]) => {
+      let newSettings = { ...(room?.settings || {}) };
+
       for (const p of rolePlayers) {
          if (!p.action_target_id) continue;
          const target = actualPlayers.find(t => t.id === p.action_target_id);
@@ -81,17 +83,18 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                durationMs: 8000
             });
          } else if (currentRoleAction.id === 'bodyguard') {
-            // Save last protected
-            await supabase.from('rooms').update({
-               settings: { ...room?.settings, lastProtectedPlayerId: target.id }
-            }).eq('id', room?.id);
+            newSettings.lastProtectedPlayerId = target.id;
+         } else if (currentRoleAction.id === 'werewolf' || currentRoleAction.id === 'alpha_wolf') {
+            newSettings.werewolfTargetId = target.id;
          }
       }
 
       const nextStep = nightStep + 1;
       setNightStep(nextStep);
+      newSettings.activeNightRole = gameNightRoles[nextStep]?.id || null;
+
       await supabase.from('rooms').update({
-         settings: { ...room?.settings, activeNightRole: gameNightRoles[nextStep]?.id || null }
+         settings: newSettings
       }).eq('id', room?.id);
       
       if (rolePlayers.length > 0) {
@@ -351,8 +354,60 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                   {room.phase === 'day' && (
                      <div className="flex-1 flex flex-col items-center justify-center text-center">
                         <h3 className="text-3xl font-serif text-moon-200 mb-4">{lang === 'en' ? 'Day Phase' : 'Siang Hari'}</h3>
-                        <p className="text-lg text-slate-400 mb-8">{lang === 'en' ? 'Let the village discuss and debate.' : 'Biarin warga diskusi buat cari tau siapa serigalanya.'}</p>
-                        <Button size="lg" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Open Voting' : 'Buka Voting'}</Button>
+                        
+                        {/* Night Resolution UI */}
+                        {(() => {
+                           if (room.settings?.werewolfTargetId) {
+                              const target = players.find(p => p.id === room.settings.werewolfTargetId);
+                              const wasProtected = target?.id === room.settings.lastProtectedPlayerId;
+
+                              return (
+                                 <div className="bg-forest-900 p-6 rounded-xl border border-white/10 mb-8 w-full max-w-md">
+                                    <h4 className="text-xl text-wolf-400 font-bold mb-2">
+                                       {lang === 'en' ? 'Night Attack Result' : 'Hasil Serangan Malam'}
+                                    </h4>
+                                    <p className="text-white mb-4">
+                                       {lang === 'en' ? `The Werewolves attacked ` : `Werewolf menyerang `}
+                                       <span className="font-bold text-lg">{target?.name || 'Unknown'}</span>.
+                                    </p>
+                                    {wasProtected ? (
+                                       <>
+                                          <p className="text-moon-400 font-bold mb-6 text-lg animate-pulse">
+                                             {lang === 'en' ? 'They were PROTECTED by the Bodyguard!' : 'Dia DILINDUNGI oleh Bodyguard!'}
+                                          </p>
+                                          <Button size="lg" onClick={async () => {
+                                             await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
+                                          }}>
+                                             {lang === 'en' ? 'Acknowledge' : 'Mengerti'}
+                                          </Button>
+                                       </>
+                                    ) : (
+                                       <div className="flex gap-4 justify-center">
+                                          <Button variant="danger" size="lg" onClick={async () => {
+                                             if (target) await killPlayer(target.id);
+                                             await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
+                                          }}>
+                                             {lang === 'en' ? 'Confirm Kill' : 'Konfirmasi Kematian'}
+                                          </Button>
+                                          <Button variant="secondary" size="lg" onClick={async () => {
+                                             await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);
+                                          }}>
+                                             {lang === 'en' ? 'Cancel / Undo' : 'Batal / Anulir'}
+                                          </Button>
+                                       </div>
+                                    )}
+                                 </div>
+                              );
+                           }
+                           return null;
+                        })()}
+
+                        {!room.settings?.werewolfTargetId && (
+                           <>
+                              <p className="text-lg text-slate-400 mb-8">{lang === 'en' ? 'Let the village discuss and debate.' : 'Biarin warga diskusi buat cari tau siapa serigalanya.'}</p>
+                              <Button size="lg" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Open Voting' : 'Buka Voting'}</Button>
+                           </>
+                        )}
                      </div>
                   )}
 
