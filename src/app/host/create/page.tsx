@@ -64,7 +64,7 @@ export default function CreateRoomPage() {
       // Redirect to host lobby
       router.push(`/host/${code}/lobby`);
     } catch (err: any) {
-      console.error(err);
+      // Intentionally not using console.error to avoid Next.js dev overlay
       setError(err.message || (lang === 'en' ? 'Failed to create room.' : 'Gagal membuat room.'));
       setLoading(false);
     }

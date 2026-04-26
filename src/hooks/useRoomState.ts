@@ -30,7 +30,7 @@ export function useRoomState(roomCode: string | null) {
         }
       } catch (err: any) {
         if (isMounted) {
-          console.error("Error fetching room:", err);
+          // Intentionally not using console.error to avoid Next.js dev overlay
           setError(err.message || "Room not found");
           setLoading(false);
         }
@@ -52,7 +52,12 @@ export function useRoomState(roomCode: string | null) {
         },
         (payload) => {
           if (isMounted) {
-            setRoom(payload.new as Room);
+            if (payload.eventType === 'DELETE') {
+              setRoom(null);
+              setError("Room has been closed by the host.");
+            } else {
+              setRoom(payload.new as Room);
+            }
           }
         }
       )

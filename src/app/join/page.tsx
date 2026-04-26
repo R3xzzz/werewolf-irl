@@ -73,7 +73,7 @@ export default function JoinRoomPage() {
       // Redirect to player waiting screen
       router.push(`/play/${upperCode}`);
     } catch (err: any) {
-      console.error(err);
+      // Intentionally not using console.error to avoid Next.js dev overlay for expected validation errors
       setError(err.message || (lang === 'en' ? 'Failed to join room.' : 'Gagal gabung ke room.'));
       setLoading(false);
     }

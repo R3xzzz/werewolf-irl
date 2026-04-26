@@ -52,7 +52,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const roomCode = resolvedParams.roomCode.toUpperCase();
   const router = useRouter();
 
-  const { playerId } = usePlayerStore();
+  const { playerId, clearPlayer } = usePlayerStore();
   const { lang, toggleLang } = useLangStore();
   const { room, loading: roomLoading, error } = useRoomState(roomCode);
   const { players, loading: playersLoading } = usePlayers(room?.id);
@@ -76,7 +76,20 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   if (!mounted) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-  if (error || !room) return <div className="min-h-screen flex items-center justify-center text-wolf-500">Error: room disconnected.</div>;
+  if (error || !room) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6">
+        <h2 className="text-3xl font-serif text-wolf-400 mb-4">{lang === 'en' ? 'Game Over' : 'Permainan Selesai'}</h2>
+        <p className="text-slate-400 mb-8">{lang === 'en' ? 'The room has been closed by the host.' : 'Room telah ditutup oleh host.'}</p>
+        <Button onClick={() => {
+           clearPlayer();
+           router.push('/');
+        }}>
+          {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
+        </Button>
+      </div>
+    );
+  }
 
   const me = players.find(p => p.id === playerId);
   if (!me) return <div className="min-h-screen flex items-center justify-center">Player session not found in room.</div>;
