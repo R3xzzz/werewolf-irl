@@ -150,7 +150,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
              </div>
           ) : (
              <div className="my-6">
-                <p className="text-xl text-moon-200 mb-4">"{lang === 'en' ? currentRoleAction.name : currentRoleAction.name_id}s, {lang === 'en' ? 'wake up."' : 'bangun."'}</p>
+                <p className="text-xl text-moon-200 mb-4">"{lang === 'en' ? (currentRoleAction.name === 'Werewolf' ? 'Werewolves' : currentRoleAction.name + 's') : currentRoleAction.name_id}, {lang === 'en' ? 'wake up."' : 'bangun."'}"</p>
                 <div className="bg-forest-900 p-4 rounded-lg border border-white/5 inline-block text-left mb-4">
                   <h4 className="text-sm text-slate-400 mb-2">{lang === 'en' ? 'Players with this role:' : 'Pemain di peran ini:'}</h4>
                   <ul>
@@ -207,7 +207,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                     <div className="flex justify-between items-center mb-1">
                       <span className="font-bold text-white">{player.name}</span>
                       {player.alive ? (
-                         <button onClick={() => killPlayer(player.id)} className="text-[10px] uppercase font-bold text-wolf-400 hover:text-white bg-wolf-950 hover:bg-wolf-700 border border-wolf-800/50 px-2 py-1 rounded transition-colors">{lang === 'en' ? 'Eliminate' : 'Kick'}</button>
+                         <button onClick={() => killPlayer(player.id)} className="text-[10px] uppercase font-bold text-wolf-400 hover:text-white bg-wolf-950 hover:bg-wolf-700 border border-wolf-800/50 px-2 py-1 rounded transition-colors">{lang === 'en' ? 'Eliminate' : 'Eliminasi'}</button>
                       ) : (
                          <span className="text-xs text-wolf-600 font-bold uppercase tracking-widest">{lang === 'en' ? 'Dead' : 'Mati'}</span>
                       )}
@@ -267,7 +267,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                                   onClick={() => killPlayer(target.id)} 
                                   className="ml-4 bg-wolf-950 text-wolf-400 border border-wolf-500/50 hover:bg-wolf-900 px-4 py-2 rounded text-sm font-bold transition-colors uppercase tracking-widest"
                                 >
-                                  {lang === 'en' ? 'Eliminate' : 'Kick'}
+                                  {lang === 'en' ? 'Eliminate' : 'Eliminasi'}
                                 </button>
                               )}
                            </div>

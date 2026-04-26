@@ -61,12 +61,19 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const [roleRevealed, setRoleRevealed] = useState(false);
   const [isCastingVote, setIsCastingVote] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!playerId) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted && !playerId) {
       router.push('/join');
     }
-  }, [playerId, router]);
+  }, [playerId, router, mounted]);
+
+  if (!mounted) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (error || !room) return <div className="min-h-screen flex items-center justify-center text-wolf-500">Error: room disconnected.</div>;
