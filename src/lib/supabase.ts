@@ -8,7 +8,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "dummy-key"
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Types matching the SQL schema
-export type RoomPhase = 'lobby' | 'settings' | 'night_transition' | 'night' | 'day_transition' | 'day' | 'voting' | 'ended';
+export type RoomPhase = 'lobby' | 'settings' | 'night_transition' | 'night' | 'day_transition' | 'day' | 'voting' | 'hunter_revenge' | 'ended';
 
 export interface Room {
   id: string;
