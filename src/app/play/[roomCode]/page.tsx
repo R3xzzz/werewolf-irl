@@ -94,22 +94,6 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   }, [room?.phase, setVotes]);
 
   useEffect(() => {
-    if (!playerId || !mounted) return;
-    
-    const heartbeat = async () => {
-      try {
-        await supabase.from('players').update({ last_seen: new Date().toISOString() }).eq('id', playerId);
-      } catch (e) {
-        // Silent catch for heartbeat
-      }
-    };
-    
-    heartbeat();
-    const interval = setInterval(heartbeat, 5000);
-    return () => clearInterval(interval);
-  }, [playerId, mounted]);
-
-  useEffect(() => {
     if (!playersLoading && mounted && playerId) {
       if (players.length > 0 && !players.find(p => p.id === playerId)) {
          setKicked(true);

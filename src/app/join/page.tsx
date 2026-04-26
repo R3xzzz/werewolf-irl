@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { supabase } from "../../lib/supabase";
@@ -88,37 +88,18 @@ export default function JoinRoomPage() {
 
       if (existingPlayers && existingPlayers.length > 0) {
         const p = existingPlayers[0];
-        const thirtySecondsAgo = new Date(Date.now() - 30000);
-        const lastSeen = p.last_seen ? new Date(p.last_seen) : new Date(0);
-
-        if (lastSeen > thirtySecondsAgo) {
-           // Player is active! Check if it's the SAME person (reconnect)
-           if (p.id === playerId) {
-              finalPlayerId = p.id;
-           } else {
-              throw new Error(lang === 'en' ? "This name is already taken in this room." : "Nama sudah digunakan di room ini.");
-           }
+        // Reconnect flow: If same ID, allow. Otherwise block duplicate.
+        if (p.id === playerId) {
+           finalPlayerId = p.id;
         } else {
-           // Player is inactive/timed out. Remove old record so we can join fresh
-           await supabase.from('players').delete().eq('id', p.id);
-           
-           const { data: playerData, error: playerInsertError } = await supabase
-             .from('players')
-             .insert([
-               { room_id: roomData.id, name: playerName.trim(), last_seen: new Date().toISOString() }
-             ])
-             .select()
-             .single();
-
-           if (playerInsertError) throw playerInsertError;
-           finalPlayerId = playerData.id;
+           throw new Error(lang === 'en' ? "This name is already taken in this room." : "Nama sudah digunakan di room ini.");
         }
       } else {
         // 3. Join the Room as a new Player
         const { data: playerData, error: playerInsertError } = await supabase
           .from('players')
           .insert([
-            { room_id: roomData.id, name: playerName.trim(), last_seen: new Date().toISOString() }
+            { room_id: roomData.id, name: playerName.trim() }
           ])
           .select()
           .single();
@@ -158,15 +139,25 @@ export default function JoinRoomPage() {
 
         <h1 className="font-serif text-3xl font-bold text-center mb-8">{lang === 'en' ? 'Join Game' : 'Gabung Game'}</h1>
         
-        {error && (
-          <div className="mb-6 p-4 bg-wolf-950/80 border border-wolf-500/30 rounded-xl text-wolf-100 text-sm text-center flex flex-col items-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.1)]">
-            <span className="text-xl">
-               {error.includes("not found") || error.includes("ditemukan") ? "⚠" : 
-                error.includes("already taken") || error.includes("sudah digunakan") ? "🚫" : "👋"}
-            </span>
-            {error}
-          </div>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="mb-8 p-4 bg-gradient-to-br from-wolf-950/90 to-black/90 border border-wolf-500/20 rounded-2xl text-wolf-100 text-sm text-center flex items-center gap-4 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="w-10 h-10 rounded-full bg-wolf-500/10 flex items-center justify-center text-xl shrink-0">
+                 {error.includes("not found") || error.includes("ditemukan") ? "⚠" : 
+                  error.includes("already taken") || error.includes("sudah digunakan") ? "🚫" : "💡"}
+              </div>
+              <div className="text-left leading-tight">
+                 <p className="font-bold text-wolf-300 text-xs uppercase tracking-widest mb-0.5">System Alert</p>
+                 <p className="text-slate-300">{error}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <form onSubmit={handleJoin} className="space-y-6">
           <div className="space-y-2">

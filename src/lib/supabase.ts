@@ -31,7 +31,6 @@ export interface Player {
   is_host: boolean;
   action_target_id: string | null;
   joined_at: string;
-  last_seen: string | null;
 }
 
 export interface Vote {
