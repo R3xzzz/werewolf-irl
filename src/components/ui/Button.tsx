@@ -11,6 +11,8 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'default', asChild = false, disabled, ...props }, ref) => {
+    // Omit problematic props that conflict with motion.button
+    const { onDrag, onDragStart, onDragEnd, onAnimationStart, ...safeProps } = props as any;
     const Comp = asChild ? Slot : "button"
     
     // Base styles
@@ -34,7 +36,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         <Slot
           className={cn(classes, className)}
           ref={ref}
-          {...props}
+          {...safeProps}
         />
       )
     }
@@ -46,7 +48,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={disabled}
         whileHover={!disabled ? { scale: 1.02, backgroundColor: variant === 'primary' ? '#5b21b6' : undefined } : {}}
         whileTap={!disabled ? { scale: 0.98 } : {}}
-        {...props}
+        {...safeProps}
       />
     )
   }
