@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { supabase } from "../../lib/supabase";
 import { usePlayerStore } from "../../store/usePlayerStore";
+import { useLangStore } from "../../store/useLangStore";
 
 export default function JoinRoomPage() {
   const [playerName, setPlayerName] = useState("");
@@ -15,6 +16,7 @@ export default function JoinRoomPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const setPlayer = usePlayerStore((state) => state.setPlayer);
+  const { lang, toggleLang } = useLangStore();
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,10 +34,10 @@ export default function JoinRoomPage() {
         .eq('code', upperCode)
         .single();
 
-      if (roomError || !roomData) throw new Error("Room not found. Check the code.");
+      if (roomError || !roomData) throw new Error(lang === 'en' ? "Room not found. Check the code." : "Room tidak ditemukan. Cek kodenya lagi.");
 
       if (roomData.phase !== 'lobby') {
-        throw new Error("Game has already started.");
+        throw new Error(lang === 'en' ? "Game has already started." : "Game sudah dimulai.");
       }
 
       // 2. Prevent Duplicate Names in Room
@@ -47,7 +49,7 @@ export default function JoinRoomPage() {
 
       if (checkError) throw checkError;
       if (existingPlayers && existingPlayers.length > 0) {
-        throw new Error("That name is already taken in this room.");
+        throw new Error(lang === 'en' ? "That name is already taken in this room." : "Nama itu sudah dipakai di room ini.");
       }
 
       // 3. Join the Room as a Player
@@ -61,7 +63,7 @@ export default function JoinRoomPage() {
 
       if (playerInsertError) {
         // Fallback for DB-level Unique constraint just in case
-        if (playerInsertError.code === '23505') throw new Error("That name is already taken.");
+        if (playerInsertError.code === '23505') throw new Error(lang === 'en' ? "That name is already taken." : "Nama itu sudah dipakai.");
         throw playerInsertError;
       }
 
@@ -72,7 +74,7 @@ export default function JoinRoomPage() {
       router.push(`/play/${upperCode}`);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Failed to join room.');
+      setError(err.message || (lang === 'en' ? 'Failed to join room.' : 'Gagal gabung ke room.'));
       setLoading(false);
     }
   };
@@ -80,11 +82,17 @@ export default function JoinRoomPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6">
       <motion.div 
-        className="w-full max-w-sm glass-panel p-8 rounded-2xl"
+        className="w-full max-w-sm glass-panel p-8 rounded-2xl relative"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
       >
-        <h1 className="font-serif text-3xl font-bold text-center mb-8">Join Game</h1>
+        <div className="absolute top-4 right-4">
+          <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-1 rounded cursor-pointer hover:bg-white/20 transition font-bold uppercase text-moon-200">
+            {lang.toUpperCase()}
+          </button>
+        </div>
+
+        <h1 className="font-serif text-3xl font-bold text-center mb-8">{lang === 'en' ? 'Join Game' : 'Gabung Game'}</h1>
         
         {error && (
           <div className="mb-4 p-3 bg-wolf-900/50 border border-wolf-500/50 rounded-md text-wolf-100 text-sm text-center">
@@ -95,11 +103,11 @@ export default function JoinRoomPage() {
         <form onSubmit={handleJoin} className="space-y-6">
           <div className="space-y-2">
             <label htmlFor="playerName" className="text-sm font-medium text-slate-300">
-              Your Name
+              {lang === 'en' ? 'Your Name' : 'Nama Kamu'}
             </label>
             <Input
               id="playerName"
-              placeholder="e.g. John Doe"
+              placeholder={lang === 'en' ? 'e.g. John Doe' : 'Cth: Budi'}
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
               required
@@ -111,11 +119,11 @@ export default function JoinRoomPage() {
 
           <div className="space-y-2">
             <label htmlFor="roomCode" className="text-sm font-medium text-slate-300">
-              Room Code
+              {lang === 'en' ? 'Room Code' : 'Kode Room'}
             </label>
             <Input
               id="roomCode"
-              placeholder="4 Letter Code"
+              placeholder={lang === 'en' ? '4 Letter Code' : '4 Huruf Kode'}
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               required
@@ -126,11 +134,11 @@ export default function JoinRoomPage() {
           </div>
           
           <Button type="submit" disabled={!playerName.trim() || roomCode.length !== 4 || loading} className="w-full">
-            {loading ? "Connecting..." : "Join Now"}
+            {loading ? (lang === 'en' ? "Connecting..." : "Menyambungkan...") : (lang === 'en' ? "Join Now" : "Gabung Sekarang")}
           </Button>
 
           <Button type="button" variant="ghost" className="w-full" onClick={() => router.push('/')} disabled={loading}>
-            Back to Home
+            {lang === 'en' ? 'Back to Home' : 'Kembali ke Menu Utama'}
           </Button>
         </form>
       </motion.div>

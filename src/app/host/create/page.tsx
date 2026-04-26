@@ -7,6 +7,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { supabase } from "../../../lib/supabase";
 import { usePlayerStore } from "../../../store/usePlayerStore";
+import { useLangStore } from "../../../store/useLangStore";
 
 // Helper to generate a 4-letter generic code
 const generateRoomCode = () => {
@@ -24,6 +25,7 @@ export default function CreateRoomPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const setPlayer = usePlayerStore((state) => state.setPlayer);
+  const { lang, toggleLang } = useLangStore();
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +65,7 @@ export default function CreateRoomPage() {
       router.push(`/host/${code}/lobby`);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Failed to create room.');
+      setError(err.message || (lang === 'en' ? 'Failed to create room.' : 'Gagal membuat room.'));
       setLoading(false);
     }
   };
@@ -71,12 +73,18 @@ export default function CreateRoomPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6">
       <motion.div 
-        className="w-full max-w-sm glass-panel p-8 rounded-2xl"
+        className="w-full max-w-sm glass-panel p-8 rounded-2xl relative"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="font-serif text-3xl font-bold text-center mb-2">Create Room</h1>
-        <p className="text-center text-slate-400 text-sm mb-8">You will be the moderator for this game.</p>
+        <div className="absolute top-4 right-4">
+          <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-1 rounded cursor-pointer hover:bg-white/20 transition font-bold uppercase text-moon-200">
+            {lang.toUpperCase()}
+          </button>
+        </div>
+
+        <h1 className="font-serif text-3xl font-bold text-center mb-2">{lang === 'en' ? 'Create Room' : 'Buat Room'}</h1>
+        <p className="text-center text-slate-400 text-sm mb-8">{lang === 'en' ? 'You will be the moderator for this game.' : 'Kamu akan menjadi moderator untuk game ini.'}</p>
         
         {error && (
           <div className="mb-4 p-3 bg-wolf-900/50 border border-wolf-500/50 rounded-md text-wolf-100 text-sm text-center">
@@ -87,11 +95,11 @@ export default function CreateRoomPage() {
         <form onSubmit={handleCreateRoom} className="space-y-6">
           <div className="space-y-2">
             <label htmlFor="hostName" className="text-sm font-medium text-slate-300">
-              Moderator Name
+              {lang === 'en' ? 'Moderator Name' : 'Nama Moderator'}
             </label>
             <Input
               id="hostName"
-              placeholder="e.g. Master Splinter"
+              placeholder={lang === 'en' ? 'e.g. Master Splinter' : 'Cth: Pak Kades'}
               value={hostName}
               onChange={(e) => setHostName(e.target.value)}
               required
@@ -102,11 +110,11 @@ export default function CreateRoomPage() {
           </div>
           
           <Button type="submit" disabled={!hostName.trim() || loading} className="w-full">
-            {loading ? "Initializing Ritual..." : "Create Room"}
+            {loading ? (lang === 'en' ? "Initializing Ritual..." : "Mempersiapkan Ritual...") : (lang === 'en' ? "Create Room" : "Buat Room")}
           </Button>
 
           <Button type="button" variant="ghost" className="w-full" onClick={() => router.push('/')} disabled={loading}>
-            Cancel
+            {lang === 'en' ? 'Cancel' : 'Batal'}
           </Button>
         </form>
       </motion.div>

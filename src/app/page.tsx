@@ -5,9 +5,11 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { Button } from "../components/ui/Button";
 import { RulesModal } from "../components/RulesModal";
+import { useLangStore } from "../store/useLangStore";
 
 export default function Home() {
   const [rulesOpen, setRulesOpen] = useState(false);
+  const { lang, toggleLang } = useLangStore();
 
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
@@ -18,6 +20,12 @@ export default function Home() {
       </div>
 
       <div className="relative z-10 w-full max-w-md px-6 flex flex-col items-center">
+          <div className="absolute top-4 right-4 z-50">
+            <button onClick={toggleLang} className="text-xs bg-white/10 px-3 py-1 rounded-full cursor-pointer hover:bg-white/20 transition font-bold uppercase tracking-wider text-moon-200">
+              {lang === 'en' ? 'EN' : 'ID'}
+            </button>
+          </div>
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -28,7 +36,7 @@ export default function Home() {
             WEREWOLF
           </h1>
           <p className="font-sans text-moon-200/80 text-lg uppercase tracking-[0.3em]">
-            Trust No One.
+            {lang === 'en' ? 'Trust No One.' : 'Jangan Percaya Siapapun.'}
           </p>
         </motion.div>
 
@@ -39,15 +47,15 @@ export default function Home() {
           transition={{ duration: 0.5, delay: 0.3 }}
         >
           <Button asChild size="lg" className="w-full h-14 text-lg bg-moon-800 hover:bg-moon-700">
-            <Link href="/join">Join Room</Link>
+            <Link href="/join">{lang === 'en' ? 'Join Room' : 'Gabung Room'}</Link>
           </Button>
           
           <Button asChild variant="secondary" size="lg" className="w-full h-14 text-lg">
-            <Link href="/host/create">Create Room</Link>
+            <Link href="/host/create">{lang === 'en' ? 'Create Room' : 'Buat Room'}</Link>
           </Button>
 
           <Button variant="ghost" size="lg" className="w-full text-slate-300 hover:text-white mt-4" onClick={() => setRulesOpen(true)}>
-            How to Play & Roles
+            {lang === 'en' ? 'How to Play & Roles' : 'Cara Bermain & Daftar Peran'}
           </Button>
         </motion.div>
         
@@ -55,10 +63,10 @@ export default function Home() {
         
         <div className="mt-12 text-center text-sm text-slate-500 max-w-[250px]">
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mb-4">
-            An IRL party game companion for 4-15+ players. Play face-to-face.
+            {lang === 'en' ? 'An IRL party game companion for 4-15+ players. Play face-to-face.' : 'Asisten main Werewolf asli untuk 4-15+ orang. Main langsung tatap muka.'}
           </motion.p>
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="text-sm font-medium text-slate-500">
-            Created by <a href="https://instagram.com/yzdddddddd_" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300 hover:text-white transition-colors">@yzdddddddd_</a>, <a href="https://instagram.com/awalstarjoo._" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300 hover:text-white transition-colors">@awalstarjoo._</a>, <a href="https://instagram.com/enruhfzrmd" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300 hover:text-white transition-colors">@enruhfzrmd</a>
+            {lang === 'en' ? 'Created by' : 'Dibuat oleh'} <a href="https://instagram.com/yzdddddddd_" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300 hover:text-white transition-colors">@yzdddddddd_</a>, <a href="https://instagram.com/awalstarjoo._" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300 hover:text-white transition-colors">@awalstarjoo._</a>, <a href="https://instagram.com/enruhfzrmd" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300 hover:text-white transition-colors">@enruhfzrmd</a>
           </motion.p>
         </div>
       </div>
