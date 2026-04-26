@@ -32,6 +32,12 @@
   --animate-fade-in: fade-in 0.5s ease-out;
   --animate-fade-out: fade-out 0.5s ease-out;
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-shimmer: shimmer 6s linear infinite;
+
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
 }
 
 /*
