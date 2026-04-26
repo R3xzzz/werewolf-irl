@@ -118,7 +118,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          desc_en: `Role: ${role?.name || 'Unknown'}`,
          desc_id: `Peran: ${role?.name_id || 'Tidak diketahui'}`,
          icon: '☠️',
-         durationMs: 7000
+         durationMs: 5000
       });
 
       let updatesToRoomSettings = { ...(room?.settings || {}) };
@@ -156,6 +156,15 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             await supabase.from('players').update({ role: 'seer' }).eq('id', apprentice.id);
             updatesToRoomSettings.historyLog.push(`Apprentice Seer (${apprentice.name}) became the new Seer.`);
          }
+      }
+
+      const doppelganger = players.find(p => p.role === 'doppelganger' && p.alive && p.action_target_id === player.id);
+      if (doppelganger) {
+         await supabase.from('players').update({ 
+            role: player.role, 
+            team: player.team || role?.team 
+         }).eq('id', doppelganger.id);
+         updatesToRoomSettings.historyLog.push(`Doppelganger (${doppelganger.name}) inherited the role of ${player.name} (${role?.name}).`);
       }
 
       await supabase.from('rooms').update({
@@ -382,7 +391,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                                           </Button>
                                        </>
                                     ) : (
-                                       <div className="grid grid-cols-2 gap-3 w-full mt-6">
+                                       <div className="flex flex-col sm:flex-row gap-3 w-full mt-6">
                                           <Button variant="danger" className="w-full" onClick={async () => {
                                              if (target) await killPlayer(target.id);
                                              await supabase.from('rooms').update({ settings: { ...room.settings, werewolfTargetId: null, lastProtectedPlayerId: null } }).eq('id', room.id);

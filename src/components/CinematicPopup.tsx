@@ -41,7 +41,7 @@ export function CinematicPopup({ popup, onClose }: CinematicPopupProps) {
           animate={{ scale: 1, y: 0, opacity: 1 }}
           exit={{ scale: 0.9, y: 20, opacity: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          onClick={(e) => e.stopPropagation()} // Prevent click from closing immediately if they click the modal
+          onClick={onClose} // Allow clicking the modal itself to close it
         >
           {/* Animated decorative line */}
           <motion.div 
