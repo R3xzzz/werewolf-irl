@@ -64,6 +64,16 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
     }
   };
 
+  const handleCancelRoom = async () => {
+    if (!room) return;
+    try {
+      await supabase.from('rooms').delete().eq('id', room.id);
+      router.push('/');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (error || !room) return <div className="min-h-screen flex items-center justify-center text-wolf-500">Error: {error}</div>;
 
@@ -183,7 +193,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
 
              <Button 
                size="lg" 
-               className="w-full relative overflow-hidden group" 
+               className="w-full relative overflow-hidden group mb-3" 
                disabled={!canStart || starting}
                onClick={handleStartGame}
              >
@@ -191,6 +201,16 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
                {canStart && !starting && (
                  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
                )}
+             </Button>
+
+             <Button 
+               variant="ghost" 
+               size="sm" 
+               className="w-full text-wolf-400 hover:text-wolf-300 hover:bg-wolf-950/50" 
+               onClick={handleCancelRoom}
+               disabled={starting}
+             >
+               Cancel Room
              </Button>
           </div>
         </div>
