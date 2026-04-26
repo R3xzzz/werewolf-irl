@@ -46,6 +46,10 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       }
 
       const updates: any = { phase: newPhase };
+      if (newPhase === 'night_transition') {
+         await supabase.from('rooms').update({ round: (room.round || 0) + 1 }).eq('id', room.id);
+         updates.settings = { ...room.settings, troubleCandidates: null };
+      }
       if (winner) {
          updates.settings = { ...(room.settings || {}), winner };
       }
@@ -306,6 +310,20 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             durationMs: 8000
          });
       }
+
+      // Automatically continue to next phase after a delay, 
+      // but ONLY if we didn't enter a special sub-phase like hunter_revenge
+      setTimeout(() => {
+         if (typeof window !== 'undefined') {
+            // Re-fetch or check current state via closure is tricky, but we can check the state at timeout time
+            // However, the best way is to only fire this if the phase remained 'voting'
+            supabase.from('rooms').select('phase').eq('id', room.id).single().then(({ data }) => {
+               if (data && data.phase === 'voting') {
+                  changePhase('night_transition');
+               }
+            });
+         }
+      }, 7000);
    };
 
    // Auto Win Condition Checker
@@ -366,6 +384,35 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                <Button size="lg" onClick={async () => {
                   setNightStep(0);
                   changePhase('night');
+
+                  // Handle Drunk Reveal on Night 3
+                  if (room && room.round === 3) {
+                     const drunks = actualPlayers.filter(p => p.role === 'drunk' && p.alive);
+                     const drunkSecrets = room.settings?.drunkSecrets || {};
+                     
+                     for (const drunk of drunks) {
+                        const realRole = drunkSecrets[drunk.id] || 'villager';
+                        const roleData = ROLES[realRole];
+                        
+                        await supabase.from('players').update({ 
+                           role: realRole,
+                           team: roleData?.team || 'village' 
+                        }).eq('id', drunk.id);
+
+                        sendPopup({
+                           type: 'popup',
+                           visibility: 'private',
+                           targetId: drunk.id,
+                           title_en: 'Sobriety Hits!',
+                           title_id: 'Sudah Sadar!',
+                           desc_en: `Your true role is: ${roleData?.name}`,
+                           desc_id: `Peran aslimu adalah: ${roleData?.name_id}`,
+                           icon: '🍺',
+                           durationMs: 10000
+                        });
+                     }
+                  }
+
                   await supabase.from('rooms').update({
                      settings: { ...room?.settings, activeNightRole: gameNightRoles[0]?.id || null }
                   }).eq('id', room?.id);
@@ -441,22 +488,32 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       <div className="min-h-screen bg-black text-white p-4 md:p-8 flex flex-col items-center">
 
          {/* Header Info */}
-         <div className="w-full max-w-5xl flex justify-between items-center mb-8 bg-forest-950 p-4 rounded-xl border border-white/10">
-            <div className="flex items-center gap-4">
-               <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
-                  {lang.toUpperCase()}
-               </button>
-               <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">
-                  i
-               </button>
+         <div className="w-full max-w-5xl flex flex-col sm:flex-row justify-between items-center gap-4 mb-8 bg-forest-950 p-4 rounded-xl border border-white/10">
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+               <div className="flex items-center gap-2">
+                  <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
+                     {lang.toUpperCase()}
+                  </button>
+                  <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">
+                     i
+                  </button>
+               </div>
+               <div className="h-4 w-px bg-white/10 hidden sm:block" />
                <div>
-                  <span className="text-slate-400 text-sm">{lang === 'en' ? 'Phase:' : 'Fase:'}</span>
-                  <span className="ml-2 font-bold uppercase tracking-widest text-moon-400">{room.phase.replace('_', ' ')}</span>
+                  <span className="text-slate-400 text-[10px] uppercase tracking-widest">{lang === 'en' ? 'Phase:' : 'Fase:'}</span>
+                  <span className="ml-2 font-bold uppercase tracking-widest text-moon-400 text-xs sm:text-sm">{room.phase.replace('_', ' ')}</span>
                </div>
             </div>
-            <div className="text-right">
-               <span className="text-slate-400 text-sm">{lang === 'en' ? 'Alive:' : 'Sisa:'}</span>
-               <span className="ml-2 font-bold text-lg">{alivePlayers.length}/{actualPlayers.length}</span>
+            <div className="flex items-center gap-4 sm:gap-6 w-full sm:w-auto justify-center sm:justify-end">
+               <div className="bg-forest-900 border border-white/10 px-4 sm:px-6 py-2 sm:py-3 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(167,139,250,0.1)]">
+                  <span className="text-slate-400 text-[8px] sm:text-[10px] uppercase tracking-[0.2em] mb-0.5 sm:mb-1 font-bold">Total Players</span>
+                  <span className="text-2xl sm:text-3xl font-serif text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">{actualPlayers.length}</span>
+               </div>
+               <div className="h-10 w-px bg-white/10" />
+               <div className="flex flex-col">
+                  <span className="text-slate-400 text-[8px] sm:text-[10px] uppercase tracking-[0.2em] mb-0.5 sm:mb-1 font-bold">{lang === 'en' ? 'Alive:' : 'Sisa:'}</span>
+                  <span className="font-bold text-lg sm:text-xl text-moon-400 leading-tight">{alivePlayers.length}/{actualPlayers.length}</span>
+               </div>
             </div>
          </div>
 

@@ -62,6 +62,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
 
   const [roleRevealed, setRoleRevealed] = useState(false);
   const [isCastingVote, setIsCastingVote] = useState(false);
+  const [troubleSelection, setTroubleSelection] = useState<string[]>([]);
   const [cupidSelection, setCupidSelection] = useState<string[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -135,6 +136,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      if (p.id === me.id) {
         if (me.role === 'bodyguard') return true;
         if (me.role === 'cupid' && room.round === 1) return true;
+        if (me.role === 'troublemaker' && room.phase === 'day' && !room.settings?.troublemakerUsed) return true;
         return false;
      }
      return true;
@@ -145,7 +147,10 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      if (room.phase === 'lobby') return lang === 'en' ? "Waiting for host to start..." : "Menunggu host memulai...";
      if (room.phase.includes('transition')) return lang === 'en' ? "The world is changing..." : "Dunia sedang berubah...";
      if (room.phase === 'night') return lang === 'en' ? "The village sleeps. If you have a night action, follow the moderator's voice." : "Desa tertidur. Jika kamu memiliki aksi, ikuti suara moderator.";
-     if (room.phase === 'day') return lang === 'en' ? "Discuss and find the wolves!" : "Diskusi & temukan Serigalanya!";
+     if (room.phase === 'day') {
+        if (me.role === 'drunk' && room.round === 1) return lang === 'en' ? "You are too drunk to speak or give hints today! 🍺" : "Kamu terlalu mabuk untuk bicara atau kasih petunjuk hari ini! 🍺";
+        return lang === 'en' ? "Discuss and find the wolves!" : "Diskusi & temukan Serigalanya!";
+     }
      if (room.phase === 'voting') return lang === 'en' ? "It's time to vote! Tap a player below to cast your vote." : "Waktunya memilih! Sentuh nama pemain di bawah untuk memvote.";
      if (room.phase === 'ended') return lang === 'en' ? "The game has ended." : "Permainan telah berakhir.";
      return "";
@@ -180,6 +185,39 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      } catch(e) {
        console.error(e);
      }
+  };
+
+  const handleTroubleSelect = (targetId: string) => {
+     if (room.settings?.troublemakerUsed) return;
+     setTroubleSelection(prev => {
+        if (prev.includes(targetId)) return prev.filter(id => id !== targetId);
+        if (prev.length < 2) return [...prev, targetId];
+        return prev;
+     });
+  };
+
+  const { sendPopup } = useGameBroadcast(roomCode);
+
+  const confirmTrouble = async () => {
+     if (troubleSelection.length !== 2) return;
+     await supabase.from('rooms').update({ 
+        settings: { 
+           ...room.settings, 
+           troubleCandidates: troubleSelection,
+           troublemakerUsed: true 
+        } 
+     }).eq('id', room.id);
+     
+     sendPopup({
+        type: 'popup',
+        visibility: 'public',
+        title_en: 'Trouble Brews!',
+        title_id: 'Onar Dimulai!',
+        desc_en: `Today's vote restricted to: ${players.find(p => p.id === troubleSelection[0])?.name} vs ${players.find(p => p.id === troubleSelection[1])?.name}`,
+        desc_id: `Voting hari ini terbatas antara: ${players.find(p => p.id === troubleSelection[0])?.name} vs ${players.find(p => p.id === troubleSelection[1])?.name}`,
+        icon: '⚖️',
+        durationMs: 8000
+     });
   };
 
   const handleCupidSelect = (targetId: string) => {
@@ -457,18 +495,30 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                        {lang === 'en' ? 'Cast your vote' : 'Pilih siapa yang harus mati'}
                     </h3>
                     <ul className="space-y-2">
-                      {alivePlayers.map(p => {
+                      {[...alivePlayers, { id: null, name: lang === 'en' ? 'No Elimination' : 'Tidak Ada Eliminasi' }].map(p => {
                          const isSelected = myVote?.target_id === p.id;
+                         const isTroubleCandidate = !room.settings?.troubleCandidates || room.settings.troubleCandidates.includes(p.id) || p.id === null;
+                         
+                         // Pacifist logic: if peace exists, they can ONLY vote peace
+                         const noEliminationExists = true; // null target is always available in this list
+                         const isPacifistRestricted = me.role === 'pacifist' && p.id !== null;
+
+                         const isDisabled = isCastingVote || 
+                                          (me.role === 'idiot' && room.settings?.idiotRevealed === me.id) ||
+                                          !isTroubleCandidate ||
+                                          isPacifistRestricted;
+
                          return (
-                           <li key={p.id}>
+                           <li key={p.id || 'none'}>
                              <button
                                onClick={() => castVote(p.id)}
-                               disabled={isCastingVote || (me.role === 'idiot' && room.settings?.idiotRevealed === me.id)}
-                               className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${(me.role === 'idiot' && room.settings?.idiotRevealed === me.id) ? 'opacity-30 cursor-not-allowed' : ''}`}
+                               disabled={isDisabled}
+                               className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${isDisabled ? 'opacity-30 cursor-not-allowed' : ''}`}
                              >
                                 <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
                                   {p.name}
                                   {(me.role === 'idiot' && room.settings?.idiotRevealed === me.id) && <span className="ml-2 text-[10px] text-wolf-500">Voting Disabled</span>}
+                                  {(isPacifistRestricted) && <span className="ml-2 text-[10px] text-moon-500">Pacifist Restricted</span>}
                                 </span>
                                 {isSelected && <span className="text-xs uppercase tracking-widest text-wolf-200">Voted</span>}
                              </button>
@@ -476,8 +526,39 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                          )
                       })}
                     </ul>
-                    {alivePlayers.length === 0 && <p className="text-sm text-slate-500 italic">No one else is alive.</p>}
                  </div>
+              )}
+
+              {room.phase === 'day' && me.role === 'troublemaker' && !room.settings?.troublemakerUsed && (
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
+                       {lang === 'en' ? 'Stir up trouble' : 'Buat Keonaran'}
+                    </h3>
+                    <p className="text-xs text-slate-400 mb-4">{lang === 'en' ? 'Select 2 players to restrict today\'s vote to only them.' : 'Pilih 2 pemain untuk membatasi voting hari ini hanya ke mereka.'}</p>
+                    <ul className="space-y-2">
+                       {alivePlayers.map(p => {
+                          const isSelected = troubleSelection.includes(p.id);
+                          return (
+                             <li key={p.id}>
+                                <button
+                                   onClick={() => handleTroubleSelect(p.id)}
+                                   className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
+                                >
+                                   <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                   {isSelected && <span className="text-xs uppercase tracking-widest text-moon-200">{lang === 'en' ? 'Selected' : 'Terpilih'}</span>}
+                                </button>
+                             </li>
+                          )
+                       })}
+                    </ul>
+                    <Button 
+                       className="w-full mt-4" 
+                       disabled={troubleSelection.length !== 2}
+                       onClick={confirmTrouble}
+                    >
+                       {lang === 'en' ? 'Confirm Dispute' : 'Konfirmasi Perselisihan'}
+                    </Button>
+                 </motion.div>
               )}
 
                {room.phase === 'night' && me.role === 'mason' && room.round === 1 && (

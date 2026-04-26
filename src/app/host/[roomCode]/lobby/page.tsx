@@ -45,7 +45,15 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
       const rolesToAssign = getAutoBalancedRoles(activePlayers.length, mode, selectedCustomRoles);
 
       // 2. Assign Roles to Players
+      const drunkSecrets: Record<string, string> = {};
+      const possibleHiddenRoles = ['villager', 'seer', 'bodyguard', 'hunter', 'mason', 'pacifist', 'troublemaker', 'idiot', 'apprentice_seer'];
+
       for (let i = 0; i < activePlayers.length; i++) {
+        const role = rolesToAssign[i];
+        if (role === 'drunk') {
+           const hiddenRole = possibleHiddenRoles[Math.floor(Math.random() * possibleHiddenRoles.length)];
+           drunkSecrets[activePlayers[i].id] = hiddenRole;
+        }
         await supabase
           .from('players')
           .update({ role: rolesToAssign[i] })
@@ -55,7 +63,16 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
       // 3. Change Room Phase to Night Transition
       await supabase
         .from('rooms')
-        .update({ phase: 'night_transition', settings: { mode } })
+        .update({ 
+           phase: 'night_transition', 
+           settings: { 
+              mode, 
+              drunkSecrets,
+              troubleCandidates: null,
+              troublemakerUsed: false,
+              historyLog: []
+           } 
+        })
         .eq('id', room.id);
 
       // Redirect into the Dashboard
