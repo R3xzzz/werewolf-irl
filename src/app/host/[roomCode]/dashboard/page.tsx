@@ -374,7 +374,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                                     </p>
                                     <Button variant="danger" size="lg" onClick={async () => {
                                        await killPlayer(target.id);
-                                       await supabase.from('players').update({ action_target_id: null }).eq('id', hunter.id);
+                                       if (hunter) await supabase.from('players').update({ action_target_id: null }).eq('id', hunter.id);
                                        await supabase.from('rooms').update({ phase: room.settings?.phaseBeforeRevenge || 'day' }).eq('id', room.id);
                                     }}>
                                        {lang === 'en' ? 'Confirm Shot' : 'Konfirmasi Tembakan'}
