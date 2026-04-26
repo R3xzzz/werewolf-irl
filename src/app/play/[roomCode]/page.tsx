@@ -293,10 +293,10 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
            type: 'popup',
            visibility: 'private',
            targetId: me.id,
-           title_en: 'Lovers Linked!',
-           title_id: 'Kekasih Terhubung!',
-           desc_en: `You linked: ${p1} ❤️ ${p2}`,
-           desc_id: `Kamu menghubungkan: ${p1} ❤️ ${p2}`,
+           title_en: '💘 Lovers Linked!',
+           title_id: '💘 Pasangan Terhubung!',
+           desc_en: `You linked: ${p1} & ${p2}`,
+           desc_id: `Kamu menghubungkan: ${p1} & ${p2}`,
            icon: '❤️',
            durationMs: 5000
         });
@@ -339,7 +339,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.8, type: 'spring' }}
               style={{
-                 background: myRole?.team === room.settings.winner ? 'radial-gradient(circle at center, rgba(16,185,129,0.3) 0%, #000000 100%)' : 'radial-gradient(circle at center, rgba(239,68,68,0.3) 0%, #000000 100%)'
+                 background: room.settings.winner.includes('village') ? 'radial-gradient(circle at center, rgba(16,185,129,0.3) 0%, #000000 100%)' : room.settings.winner.includes('werewolf') ? 'radial-gradient(circle at center, rgba(239,68,68,0.3) 0%, #000000 100%)' : 'radial-gradient(circle at center, rgba(244,114,182,0.3) 0%, #000000 100%)'
               }}
             >
                <div className="absolute inset-0 bg-black/80 backdrop-blur-md -z-10" />
@@ -348,7 +348,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                      <h1 className="text-6xl md:text-8xl font-serif text-pink-400 drop-shadow-[0_0_30px_rgba(244,114,182,0.8)] mb-4 tracking-widest">
                        {lang === 'en' ? 'TRUE LOVE' : 'CINTA SEJATI'}
                      </h1>
-                  ) : myRole?.team === room.settings.winner ? (
+                  ) : (room.settings.winner.includes('lovers') || myRole?.team === room.settings.winner || (myRole?.team === 'village' && room.settings.winner.includes('village')) || (myRole?.team === 'werewolf' && room.settings.winner.includes('werewolf'))) ? (
                      <h1 className="text-6xl md:text-8xl font-serif text-emerald-400 drop-shadow-[0_0_30px_rgba(16,185,129,0.8)] mb-4 tracking-widest">
                        {lang === 'en' ? 'VICTORY' : 'MENANG'}
                      </h1>
@@ -358,18 +358,25 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                      </h1>
                   )}
                   <p className="text-2xl text-slate-300 font-serif mb-2">
-                     {room.settings.winner === 'village' ? (lang === 'en' ? 'The Village Survives' : 'Warga Desa Selamat') : room.settings.winner === 'lovers' ? (lang === 'en' ? 'The Lovers Survived Together' : 'Kekasih Selamat Bersama') : (lang === 'en' ? 'The Werewolves Hunted Everyone' : 'Manusia Serigala Menguasai Desa')}
+                     {room.settings.winner.includes('village') ? (lang === 'en' ? 'The Village Survives' : 'Warga Desa Selamat') : room.settings.winner === 'lovers' ? (lang === 'en' ? 'The Lovers Survived Together' : 'Kekasih Selamat Bersama') : (lang === 'en' ? 'The Werewolves Hunted Everyone' : 'Manusia Serigala Menguasai Desa')}
                   </p>
-                  <Button 
-                    variant="danger" 
-                    size="sm" 
-                    onClick={async () => {
-                       if (me) await supabase.from('players').delete().eq('id', me.id);
-                       router.push('/');
-                    }}
-                  >
-                     {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
-                  </Button>
+                  {room.settings.winner.includes('lovers') && room.settings.winner !== 'lovers' && (
+                     <p className="text-pink-400 font-bold text-lg animate-pulse mb-6">
+                        💕 {lang === 'en' ? 'Lovers also win together!' : 'Kekasih juga menang bersama!'}
+                     </p>
+                  )}
+                  <div className="mt-4">
+                     <Button 
+                       variant="danger" 
+                       size="sm" 
+                       onClick={async () => {
+                          if (me) await supabase.from('players').delete().eq('id', me.id);
+                          router.push('/');
+                       }}
+                     >
+                        {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
+                     </Button>
+                  </div>
                </div>
             </motion.div>
          )}
@@ -408,6 +415,23 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
          ) : (
            <>
               <p className="text-xl text-slate-300 mb-8 min-h-[60px]">{getPhaseMessage()}</p>
+              
+              {/* Lover Status Card */}
+              {me.alive && room.settings?.lovers?.includes(me.id) && (
+                 <motion.div 
+                   initial={{ opacity: 0, scale: 0.9 }} 
+                   animate={{ opacity: 1, scale: 1 }}
+                   className="w-full max-w-xs mx-auto mb-8 bg-gradient-to-r from-pink-900/40 to-forest-900/40 border border-pink-500/30 p-4 rounded-2xl flex items-center gap-4 shadow-[0_0_20px_rgba(244,114,182,0.15)]"
+                 >
+                    <div className="w-10 h-10 rounded-full bg-pink-500/20 flex items-center justify-center text-xl">❤️</div>
+                    <div className="text-left">
+                       <p className="text-[9px] uppercase tracking-widest text-pink-400 font-bold">{lang === 'en' ? 'In Love With' : 'Jatuh Cinta Dengan'}</p>
+                       <p className="text-md font-serif text-white">
+                          {players.find(p => p.id === room.settings.lovers.find((id: string) => id !== me.id))?.name || '...'}
+                       </p>
+                    </div>
+                 </motion.div>
+              )}
               
               {/* Night Action Block */}
               {room.phase === 'night' && (room.settings?.activeNightRole === me.role || myRole?.isAlwaysAwakeWith?.includes(room.settings?.activeNightRole)) && (

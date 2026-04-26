@@ -151,22 +151,22 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                type: 'popup',
                visibility: 'private',
                targetId: l1.id,
-               title_en: 'You are in Love! 💕',
-               title_id: 'Kamu Jatuh Cinta! 💕',
+               title_en: '❤️ You are in Love!',
+               title_id: '❤️ Kamu Jatuh Cinta!',
                desc_en: `Your partner is: ${l2.name}. If one of you dies, the other dies too.`,
                desc_id: `Pasanganmu adalah: ${l2.name}. Jika salah satu mati, yang lain juga ikut mati.`,
-               icon: '❤️',
+               icon: '💖',
                durationMs: 10000
             });
             sendPopup({
                type: 'popup',
                visibility: 'private',
                targetId: l2.id,
-               title_en: 'You are in Love! 💕',
-               title_id: 'Kamu Jatuh Cinta! 💕',
+               title_en: '❤️ You are in Love!',
+               title_id: '❤️ Kamu Jatuh Cinta!',
                desc_en: `Your partner is: ${l1.name}. If one of you dies, the other dies too.`,
                desc_id: `Pasanganmu adalah: ${l1.name}. Jika salah satu mati, yang lain juga ikut mati.`,
-               icon: '❤️',
+               icon: '💖',
                durationMs: 10000
             });
          }
@@ -294,6 +294,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          if (otherLoverId && otherLover && otherLover.alive) {
             setTimeout(async () => {
                await killPlayer(otherLoverId, true);
+               updatesToRoomSettings.historyLog.push(`Broken Heart: ${otherLover.name} died after ${player.name}'s death.`);
+               await supabase.from('rooms').update({ settings: updatesToRoomSettings }).eq('id', room?.id);
                sendPopup({
                   type: 'popup', visibility: 'public',
                   title_en: `Broken Heart`, title_id: `Patah Hati`,
@@ -358,21 +360,39 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
    useEffect(() => {
       if (!room || room.phase === 'ended' || room.phase === 'lobby') return;
+      
+      // 1. Enforce Missing Heartbreak Deaths (Safety Catch)
+      const lovers = room.settings?.lovers || [];
+      if (lovers.length === 2) {
+         const l1 = players.find(p => p.id === lovers[0]);
+         const l2 = players.find(p => p.id === lovers[1]);
+         if (l1 && l2) {
+            if (!l1.alive && l2.alive) {
+               killPlayer(l2.id, true);
+            } else if (!l2.alive && l1.alive) {
+               killPlayer(l1.id, true);
+            }
+         }
+      }
+
+      // 2. Victory Condition Logic
       const aliveWolves = alivePlayers.filter(p => ROLES[p.role]?.team === 'werewolf');
       const aliveVillagersAndNeutrals = alivePlayers.filter(p => ROLES[p.role]?.team !== 'werewolf');
+      
       const totalWolves = actualPlayers.filter(p => ROLES[p.role]?.team === 'werewolf');
-      if (totalWolves.length === 0) return;
+      if (totalWolves.length === 0 && room.round > 0) return;
 
-      const areLoversOnlySurvivors = alivePlayers.length === 2 && room.settings?.lovers?.length === 2 && room.settings.lovers.every((id: string) => alivePlayers.find(p => p.id === id));
+      const areLoversOnlySurvivors = alivePlayers.length === 2 && lovers.length === 2 && lovers.every((id: string) => alivePlayers.find(p => p.id === id));
+      const bothLoversAlive = lovers.length === 2 && lovers.every((id: string) => alivePlayers.find(p => p.id === id)?.alive);
 
       if (areLoversOnlySurvivors) {
          changePhase('ended', 'lovers');
       } else if (aliveWolves.length === 0) {
-         changePhase('ended', 'village');
+         changePhase('ended', bothLoversAlive ? 'village_lovers' : 'village');
       } else if (aliveWolves.length >= aliveVillagersAndNeutrals.length) {
-         changePhase('ended', 'werewolf');
+         changePhase('ended', bothLoversAlive ? 'werewolf_lovers' : 'werewolf');
       }
-   }, [alivePlayers.length, room?.phase]);
+   }, [alivePlayers.length, room?.phase, room?.settings?.lovers]);
 
    const validVotes = votes.filter(vote => players.find(p => p.id === vote.voter_id)?.alive);
 
