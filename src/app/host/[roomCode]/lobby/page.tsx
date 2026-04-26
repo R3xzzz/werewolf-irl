@@ -24,6 +24,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
   const [selectedCustomRoles, setSelectedCustomRoles] = useState<string[]>([]);
   const [starting, setStarting] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (room && room.phase !== 'lobby' && room.phase !== 'settings') {
@@ -76,6 +77,23 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
     }
   };
 
+  const handleKickPlayer = async (playerId: string) => {
+    try {
+      const { error } = await supabase.from('players').delete().eq('id', playerId);
+      if (error) {
+        console.error("Failed to kick:", error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(roomCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (error || !room) return <div className="min-h-screen flex items-center justify-center text-wolf-500">Error: {error}</div>;
 
@@ -92,9 +110,21 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
         <div>
           <h2 className="text-slate-400 text-sm uppercase tracking-widest">Room Code</h2>
           <div className="flex items-center gap-4">
-             <h1 className="font-mono text-5xl md:text-6xl font-bold tracking-widest text-moon-400 cursor-pointer hover:text-moon-200 transition-colors"
-                 onClick={() => { navigator.clipboard.writeText(roomCode); alert('Copied!');}}>
+             <h1 className="font-mono text-5xl md:text-6xl font-bold tracking-widest text-moon-400 cursor-pointer hover:text-moon-200 transition-colors relative"
+                 onClick={handleCopy}>
                {roomCode}
+               <AnimatePresence>
+                 {copied && (
+                   <motion.div 
+                     initial={{ opacity: 0, y: 10, x: '-50%' }}
+                     animate={{ opacity: 1, y: 0, x: '-50%' }}
+                     exit={{ opacity: 0 }}
+                     className="absolute -top-8 left-1/2 bg-moon-400 text-forest-950 text-xs font-bold py-1 px-3 rounded-full pointer-events-none"
+                   >
+                     COPIED!
+                   </motion.div>
+                 )}
+               </AnimatePresence>
              </h1>
              <Button variant="ghost" size="sm" className="bg-white/10 hover:bg-white/20 text-moon-200" onClick={() => setShowQr(true)}>
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
@@ -133,8 +163,8 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
                     className="bg-forest-900/50 p-3 rounded-lg flex justify-between items-center border border-white/5"
                   >
                     <span>{player.name}</span>
-                    <Button variant="ghost" size="sm" className="text-wolf-500 hover:text-wolf-400 opacity-50 hover:opacity-100"
-                            onClick={async () => await supabase.from('players').delete().eq('id', player.id)}>
+                    <Button variant="ghost" size="sm" className="text-wolf-500 hover:text-wolf-400 opacity-50 hover:opacity-100 z-10"
+                            onClick={() => handleKickPlayer(player.id)}>
                       Kick
                     </Button>
                   </motion.li>
