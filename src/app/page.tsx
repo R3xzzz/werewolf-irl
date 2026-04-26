@@ -19,13 +19,13 @@ export default function Home() {
         <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-moon-400/10 blur-[120px] rounded-full animate-pulse-slow pointer-events-none" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md px-6 flex flex-col items-center">
-          <div className="absolute top-4 right-4 z-50">
-            <button onClick={toggleLang} className="text-xs bg-white/10 px-3 py-1 rounded-full cursor-pointer hover:bg-white/20 transition font-bold uppercase tracking-wider text-moon-200">
-              {lang === 'en' ? 'EN' : 'ID'}
-            </button>
-          </div>
+      <div className="absolute top-6 right-6 z-50">
+        <button onClick={toggleLang} className="text-xs bg-white/10 px-3 py-1 rounded-full cursor-pointer hover:bg-white/20 transition font-bold uppercase tracking-wider text-moon-200">
+          {lang === 'en' ? 'EN' : 'ID'}
+        </button>
+      </div>
 
+      <div className="relative z-10 w-full max-w-md px-6 flex flex-col items-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

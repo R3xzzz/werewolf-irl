@@ -81,16 +81,17 @@ export default function JoinRoomPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6">
+      <div className="absolute top-6 right-6 z-50">
+        <button onClick={toggleLang} className="text-xs bg-white/10 px-3 py-1 rounded-full cursor-pointer hover:bg-white/20 transition font-bold uppercase tracking-wider text-moon-200">
+          {lang === 'en' ? 'EN' : 'ID'}
+        </button>
+      </div>
+
       <motion.div 
         className="w-full max-w-sm glass-panel p-8 rounded-2xl relative"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
       >
-        <div className="absolute top-4 right-4">
-          <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-1 rounded cursor-pointer hover:bg-white/20 transition font-bold uppercase text-moon-200">
-            {lang.toUpperCase()}
-          </button>
-        </div>
 
         <h1 className="font-serif text-3xl font-bold text-center mb-8">{lang === 'en' ? 'Join Game' : 'Gabung Game'}</h1>
         
