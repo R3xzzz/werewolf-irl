@@ -70,6 +70,10 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
               drunkSecrets,
               troubleCandidates: null,
               troublemakerUsed: false,
+              troubleScheduled: false,
+              pacifistUsed: false,
+              pacifistScheduled: false,
+              pacifistActive: false,
               historyLog: []
            } 
         })
@@ -129,28 +133,30 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
       >
         <div>
           <h2 className="text-slate-400 text-sm uppercase tracking-widest">Room Code</h2>
-          <div className="flex items-center gap-4">
-             <h1 className="font-mono text-5xl md:text-6xl font-bold tracking-widest text-moon-400 cursor-pointer hover:text-moon-200 transition-colors relative"
-                 onClick={handleCopy}>
-               {roomCode}
-               <AnimatePresence>
-                 {copied && (
-                   <motion.div 
-                     initial={{ opacity: 0, y: 10, x: '-50%' }}
-                     animate={{ opacity: 1, y: 0, x: '-50%' }}
-                     exit={{ opacity: 0 }}
-                     className="absolute -top-8 left-1/2 bg-moon-400 text-forest-950 text-xs font-bold py-1 px-3 rounded-full pointer-events-none"
-                   >
-                     COPIED!
-                   </motion.div>
-                 )}
-               </AnimatePresence>
-             </h1>
-             <Button variant="ghost" size="sm" className="bg-white/10 hover:bg-white/20 text-moon-200" onClick={() => setShowQr(true)}>
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-               <span className="ml-2 hidden sm:inline">Show QR</span>
-             </Button>
-             <p className="text-xs text-slate-500 hidden md:block">(click to copy)</p>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-4">
+               <h1 className="font-mono text-5xl md:text-6xl font-bold tracking-widest text-moon-400 cursor-pointer hover:text-moon-200 transition-colors relative"
+                   onClick={handleCopy}>
+                 {roomCode}
+                 <AnimatePresence>
+                   {copied && (
+                     <motion.div 
+                       initial={{ opacity: 0, y: 10, x: '-50%' }}
+                       animate={{ opacity: 1, y: 0, x: '-50%' }}
+                       exit={{ opacity: 0 }}
+                       className="absolute -top-8 left-1/2 bg-moon-400 text-forest-950 text-xs font-bold py-1 px-3 rounded-full pointer-events-none"
+                     >
+                       COPIED!
+                     </motion.div>
+                   )}
+                 </AnimatePresence>
+               </h1>
+               <Button variant="ghost" size="sm" className="bg-white/10 hover:bg-white/20 text-moon-200" onClick={() => setShowQr(true)}>
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                 <span className="ml-2 hidden sm:inline">Show QR</span>
+               </Button>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest opacity-60 font-bold">(click to copy)</p>
           </div>
         </div>
         <div className="text-right">

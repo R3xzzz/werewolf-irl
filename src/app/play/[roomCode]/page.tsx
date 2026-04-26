@@ -221,6 +221,72 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      });
   };
 
+  const handleTroubleSchedule = async () => {
+     if (troubleSelection.length !== 2) return;
+     await supabase.from('rooms').update({ 
+        settings: { 
+           ...room.settings, 
+           troubleScheduled: true,
+           troubleScheduledTargets: troubleSelection,
+           troublemakerUsed: true 
+        } 
+     }).eq('id', room.id);
+     
+     sendPopup({
+        type: 'popup',
+        visibility: 'private',
+        targetId: me.id,
+        title_en: 'Skill Scheduled',
+        title_id: 'Skill Terjadwal',
+        desc_en: 'Your trouble will brew tomorrow morning.',
+        desc_id: 'Keonaranmu akan dimulai besok pagi.',
+        icon: '⏳',
+        durationMs: 6000
+     });
+  };
+
+  const handlePacifistAction = async (scheduled: boolean) => {
+     if (room.settings?.pacifistUsed) return;
+     
+     const updates: any = {
+        ...room.settings,
+        pacifistUsed: true
+     };
+
+     if (scheduled) {
+        updates.pacifistScheduled = true;
+     } else {
+        updates.pacifistActive = true;
+     }
+
+     await supabase.from('rooms').update({ settings: updates }).eq('id', room.id);
+
+     sendPopup({
+        type: 'popup',
+        visibility: 'private',
+        targetId: me.id,
+        title_en: scheduled ? 'Skill Scheduled' : 'Skill Activated',
+        title_id: scheduled ? 'Skill Terjadwal' : 'Skill Diaktifkan',
+        desc_en: scheduled ? 'Peace will be enforced tomorrow.' : 'You will be forced to vote for peace today.',
+        desc_id: scheduled ? 'Kedamaian akan dipaksakan besok.' : 'Kamu akan dipaksa memilih damai hari ini.',
+        icon: '🕊️',
+        durationMs: 6000
+     });
+
+     if (!scheduled) {
+        sendPopup({
+           type: 'popup',
+           visibility: 'public',
+           title_en: 'Pacifist Plea!',
+           title_id: 'Seruan Damai!',
+           desc_en: `${me.name} is calling for peace today.`,
+           desc_id: `${me.name} menyerukan kedamaian hari ini.`,
+           icon: '🕊️',
+           durationMs: 6000
+        });
+     }
+  };
+
   const handleCupidSelect = (targetId: string) => {
      if (me?.action_target_id) return; // already confirmed
      setCupidSelection(prev => {
@@ -425,7 +491,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                                   className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'} ${isConsecutiveBodyguard ? 'opacity-30 cursor-not-allowed' : ''}`}
                                 >
                                    <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
-                                      {p.name}
+                                      {me.role === 'bodyguard' && p.id === me.id ? (lang === 'en' ? 'Protect Yourself' : 'Lindungi Diri Sendiri') : p.name}
                                       {isConsecutiveBodyguard && <span className="ml-2 text-[10px] uppercase text-wolf-500">Protected Last Night</span>}
                                    </span>
                                    <div className="flex items-center gap-2">
@@ -501,8 +567,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                          const isTroubleCandidate = !room.settings?.troubleCandidates || room.settings.troubleCandidates.includes(p.id) || p.id === null;
                          
                          // Pacifist logic: if peace exists, they can ONLY vote peace
-                         const noEliminationExists = true; // null target is always available in this list
-                         const isPacifistRestricted = me.role === 'pacifist' && p.id !== null;
+                         const isPacifistRestricted = me.role === 'pacifist' && room.settings?.pacifistActive && p.id !== null;
 
                          const isDisabled = isCastingVote || 
                                           (me.role === 'idiot' && room.settings?.idiotRevealed === me.id) ||
@@ -552,13 +617,47 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                           )
                        })}
                     </ul>
-                    <Button 
-                       className="w-full mt-4" 
-                       disabled={troubleSelection.length !== 2}
-                       onClick={confirmTrouble}
-                    >
-                       {lang === 'en' ? 'Confirm Dispute' : 'Konfirmasi Perselisihan'}
-                    </Button>
+                    <div className="flex gap-3 mt-4">
+                       <Button 
+                          className="flex-1" 
+                          disabled={troubleSelection.length !== 2}
+                          onClick={confirmTrouble}
+                       >
+                          {lang === 'en' ? 'Use Today' : 'Hari Ini'}
+                       </Button>
+                       <Button 
+                          variant="secondary"
+                          className="flex-1" 
+                          disabled={troubleSelection.length !== 2}
+                          onClick={handleTroubleSchedule}
+                       >
+                          {lang === 'en' ? 'Tomorrow' : 'Esok Hari'}
+                       </Button>
+                    </div>
+                 </motion.div>
+              )}
+
+              {room.phase === 'day' && me.role === 'pacifist' && !room.settings?.pacifistUsed && (
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
+                       {lang === 'en' ? 'Pacifist Plea' : 'Seruan Damai'}
+                    </h3>
+                    <p className="text-xs text-slate-400 mb-4">{lang === 'en' ? 'Use your ability to force yourself to vote for peace.' : 'Gunakan kemampuanmu untuk memaksa dirimu memilih kedamaian.'}</p>
+                    <div className="flex gap-3">
+                       <Button 
+                          className="flex-1" 
+                          onClick={() => handlePacifistAction(false)}
+                       >
+                          {lang === 'en' ? 'Use Today' : 'Hari Ini'}
+                       </Button>
+                       <Button 
+                          variant="secondary"
+                          className="flex-1" 
+                          onClick={() => handlePacifistAction(true)}
+                       >
+                          {lang === 'en' ? 'Tomorrow' : 'Esok Hari'}
+                       </Button>
+                    </div>
                  </motion.div>
               )}
 

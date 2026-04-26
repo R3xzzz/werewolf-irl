@@ -40,16 +40,19 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
    const changePhase = async (newPhase: string, winner?: string) => {
       if (!room) return;
+      
+      const updates: any = { phase: newPhase };
+
       if (newPhase === 'voting') {
          // Clear old votes for this room before opening voting anew
          await supabase.from('votes').delete().eq('room_id', room.id);
       }
 
-      const updates: any = { phase: newPhase };
       if (newPhase === 'night_transition') {
          await supabase.from('rooms').update({ round: (room.round || 0) + 1 }).eq('id', room.id);
-         updates.settings = { ...room.settings, troubleCandidates: null };
+         updates.settings = { ...room.settings, troubleCandidates: null, pacifistActive: false };
       }
+
       if (winner) {
          updates.settings = { ...(room.settings || {}), winner };
       }
@@ -58,6 +61,54 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          // Reset players to default state for a new game
          updates.settings = { ...room.settings, winner: null }; // clear winner
          await supabase.from('players').update({ alive: true, role: 'unassigned', action_target_id: null }).eq('room_id', room.id);
+      }
+
+      if (newPhase === 'day') {
+         const s = room.settings || {};
+         let updatedSettings = { ...s };
+         let needsUpdate = false;
+
+         if (s.troubleScheduled && s.troubleScheduledTargets) {
+            updatedSettings.troubleCandidates = s.troubleScheduledTargets;
+            updatedSettings.troubleScheduled = false;
+            updatedSettings.troubleScheduledTargets = null;
+            needsUpdate = true;
+            
+            sendPopup({
+               type: 'popup',
+               visibility: 'public',
+               title_en: 'Scheduled Trouble Brews!',
+               title_id: 'Onar Terjadwal Dimulai!',
+               desc_en: `Today's vote restricted to: ${players.find(p => p.id === updatedSettings.troubleCandidates[0])?.name} vs ${players.find(p => p.id === updatedSettings.troubleCandidates[1])?.name}`,
+               desc_id: `Voting hari ini terbatas antara: ${players.find(p => p.id === updatedSettings.troubleCandidates[0])?.name} vs ${players.find(p => p.id === updatedSettings.troubleCandidates[1])?.name}`,
+               icon: '⚖️',
+               durationMs: 8000
+            });
+         }
+
+         if (s.pacifistScheduled) {
+            updatedSettings.pacifistActive = true;
+            updatedSettings.pacifistScheduled = false;
+            needsUpdate = true;
+            
+            const pacifist = players.find(p => p.role === 'pacifist' && p.alive);
+            if (pacifist) {
+               sendPopup({
+                  type: 'popup',
+                  visibility: 'public',
+                  title_en: 'Scheduled Pacifist Plea!',
+                  title_id: 'Seruan Damai Terjadwal!',
+                  desc_en: `${pacifist.name} is calling for peace today.`,
+                  desc_id: `${pacifist.name} menyerukan kedamaian hari ini.`,
+                  icon: '🕊️',
+                  durationMs: 6000
+               });
+            }
+         }
+
+         if (needsUpdate) {
+            updates.settings = updatedSettings;
+         }
       }
 
       await supabase.from('rooms').update(updates).eq('id', room.id);
@@ -104,6 +155,30 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
          const l1 = players.find(p => p.id === newSettings.lovers[0]);
          const l2 = players.find(p => p.id === newSettings.lovers[1]);
          if (l1 && l2) {
+            // Send private notifications to both lovers
+            sendPopup({
+               type: 'popup',
+               visibility: 'private',
+               targetId: l1.id,
+               title_en: 'You are in Love! 💕',
+               title_id: 'Kamu Jatuh Cinta! 💕',
+               desc_en: `Your partner is: ${l2.name}. If one of you dies, the other dies too.`,
+               desc_id: `Pasanganmu adalah: ${l2.name}. Jika salah satu mati, yang lain juga ikut mati.`,
+               icon: '❤️',
+               durationMs: 10000
+            });
+            sendPopup({
+               type: 'popup',
+               visibility: 'private',
+               targetId: l2.id,
+               title_en: 'You are in Love! 💕',
+               title_id: 'Kamu Jatuh Cinta! 💕',
+               desc_en: `Your partner is: ${l1.name}. If one of you dies, the other dies too.`,
+               desc_id: `Pasanganmu adalah: ${l1.name}. Jika salah satu mati, yang lain juga ikut mati.`,
+               icon: '❤️',
+               durationMs: 10000
+            });
+
             const logMsg = `Lovers Pair Created: ${l1.name} ❤️ ${l2.name}`;
             if (!newSettings.historyLog.includes(logMsg)) {
                newSettings.historyLog.push(logMsg);
@@ -344,6 +419,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       } else if (aliveWolves.length === 0) {
          changePhase('ended', 'village');
       } else if (aliveWolves.length >= aliveVillagersAndNeutrals.length) {
+         // Final check: if wolves equals others, but lovers are still in, they might have a chance? 
+         // Standard rules: Wolves win. But if lovers are 1 wolf + 1 villager, they win if they are last 2.
          changePhase('ended', 'werewolf');
       }
    }, [alivePlayers.length, room?.phase]);
@@ -528,7 +605,14 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                         <div className="flex justify-between items-center mb-1">
                            <span className="font-bold text-white">{player.name}</span>
                            {player.alive ? (
-                              <button onClick={() => killPlayer(player.id)} className="text-[10px] uppercase font-bold text-wolf-400 hover:text-white bg-wolf-950 hover:bg-wolf-700 border border-wolf-800/50 px-2 py-1 rounded transition-colors">{lang === 'en' ? 'Eliminate' : 'Eliminasi'}</button>
+                              <motion.button 
+                                 whileHover={{ scale: 1.05, boxShadow: '0 0 15px rgba(239, 68, 68, 0.4)', borderColor: '#ef4444' }}
+                                 whileTap={{ scale: 0.95 }}
+                                 onClick={() => killPlayer(player.id)} 
+                                 className="text-[10px] uppercase font-bold text-wolf-400 hover:text-white bg-wolf-950 hover:bg-wolf-700 border border-wolf-800/50 px-2 py-1 rounded transition-all cursor-pointer shadow-sm"
+                              >
+                                 {lang === 'en' ? 'Eliminate' : 'Eliminasi'}
+                              </motion.button>
                            ) : (
                               <span className="text-xs text-wolf-600 font-bold uppercase tracking-widest">{lang === 'en' ? 'Dead' : 'Mati'}</span>
                            )}
