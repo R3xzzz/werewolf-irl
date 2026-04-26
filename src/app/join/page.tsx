@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "../../components/ui/Button";
@@ -8,6 +8,7 @@ import { Input } from "../../components/ui/Input";
 import { supabase } from "../../lib/supabase";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import { useLangStore } from "../../store/useLangStore";
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 export default function JoinRoomPage() {
   const [playerName, setPlayerName] = useState("");
@@ -17,6 +18,39 @@ export default function JoinRoomPage() {
   const router = useRouter();
   const setPlayer = usePlayerStore((state) => state.setPlayer);
   const { lang, toggleLang } = useLangStore();
+  const [showScanner, setShowScanner] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const codeParam = urlParams.get('code');
+      if (codeParam) {
+        setRoomCode(codeParam.toUpperCase());
+      }
+    }
+  }, []);
+
+  const handleScan = (detectedCodes: any[]) => {
+    if (detectedCodes && detectedCodes.length > 0) {
+      const url = detectedCodes[0].rawValue;
+      if (url) {
+        try {
+          const urlObj = new URL(url);
+          const code = urlObj.searchParams.get('code');
+          if (code) {
+            setRoomCode(code.toUpperCase());
+            setShowScanner(false);
+          }
+        } catch (e) {
+           // If it's just the 4 letter code
+           if (url.length === 4) {
+             setRoomCode(url.toUpperCase());
+             setShowScanner(false);
+           }
+        }
+      }
+    }
+  };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,19 +157,29 @@ export default function JoinRoomPage() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="roomCode" className="text-sm font-medium text-slate-300">
-              {lang === 'en' ? 'Room Code' : 'Kode Room'}
+            <label htmlFor="roomCode" className="text-sm font-medium text-slate-300 flex justify-between">
+              <span>{lang === 'en' ? 'Room Code' : 'Kode Room'}</span>
+              <button 
+                 type="button" 
+                 onClick={() => setShowScanner(true)}
+                 className="text-xs flex items-center gap-1 text-moon-400 hover:text-moon-200 bg-moon-900/30 px-2 py-0.5 rounded"
+              >
+                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                 SCAN QR
+              </button>
             </label>
-            <Input
-              id="roomCode"
-              placeholder={lang === 'en' ? '4 Letter Code' : '4 Huruf Kode'}
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              required
-              maxLength={4}
-              disabled={loading}
-              className="uppercase tracking-widest font-mono text-center"
-            />
+            <div className="relative">
+              <Input
+                id="roomCode"
+                placeholder={lang === 'en' ? '4 Letter Code' : '4 Huruf Kode'}
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                required
+                maxLength={4}
+                disabled={loading}
+                className="uppercase tracking-widest font-mono text-center"
+              />
+            </div>
           </div>
           
           <Button type="submit" disabled={!playerName.trim() || roomCode.length !== 4 || loading} className="w-full">
@@ -147,6 +191,20 @@ export default function JoinRoomPage() {
           </Button>
         </form>
       </motion.div>
+
+      {showScanner && (
+         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90">
+            <div className="w-full max-w-sm relative">
+               <button type="button" onClick={() => setShowScanner(false)} className="absolute -top-12 right-0 text-white z-10 p-2 font-bold bg-white/10 rounded-full w-10 h-10 flex items-center justify-center hover:bg-white/20">
+                 ✕
+               </button>
+               <div className="rounded-2xl overflow-hidden shadow-2xl border border-white/20 bg-forest-950 aspect-square">
+                 <Scanner onScan={handleScan} />
+               </div>
+               <p className="text-center text-slate-300 mt-6 font-bold tracking-widest uppercase">{lang === 'en' ? 'Point camera at Host QR' : 'Arahkan kamera ke QR Host'}</p>
+            </div>
+         </div>
+      )}
     </div>
   );
 }

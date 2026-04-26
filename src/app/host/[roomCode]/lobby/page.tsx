@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "../../../../components/ui/Button";
 import { useRoomState } from "../../../../hooks/useRoomState";
 import { usePlayers } from "../../../../hooks/usePlayers";
@@ -22,6 +23,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
   const [mode, setMode] = useState<GameMode>('casual');
   const [selectedCustomRoles, setSelectedCustomRoles] = useState<string[]>([]);
   const [starting, setStarting] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     if (room && room.phase !== 'lobby' && room.phase !== 'settings') {
@@ -94,6 +96,10 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
                  onClick={() => { navigator.clipboard.writeText(roomCode); alert('Copied!');}}>
                {roomCode}
              </h1>
+             <Button variant="ghost" size="sm" className="bg-white/10 hover:bg-white/20 text-moon-200" onClick={() => setShowQr(true)}>
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+               <span className="ml-2 hidden sm:inline">Show QR</span>
+             </Button>
              <p className="text-xs text-slate-500 hidden md:block">(click to copy)</p>
           </div>
         </div>
@@ -215,6 +221,32 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
           </div>
         </div>
       </div>
+      <AnimatePresence>
+         {showQr && (
+            <motion.div 
+               className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               onClick={() => setShowQr(false)}
+            >
+               <motion.div 
+                  className="bg-forest-950 p-6 md:p-8 rounded-2xl flex flex-col items-center shadow-2xl border border-white/20"
+                  initial={{ scale: 0.9, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.9, y: 20 }}
+                  onClick={(e) => e.stopPropagation()}
+               >
+                  <h3 className="text-moon-200 font-bold text-xl mb-4 font-serif text-center uppercase tracking-widest">Scan to Join</h3>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200">
+                     {typeof window !== 'undefined' && <QRCodeSVG value={`${window.location.origin}/join?code=${roomCode}`} size={256} />}
+                  </div>
+                  <p className="text-moon-400 font-mono text-2xl mt-4 font-bold tracking-widest">{roomCode}</p>
+                  <Button variant="secondary" className="mt-6 w-full" onClick={() => setShowQr(false)}>Close</Button>
+               </motion.div>
+            </motion.div>
+         )}
+      </AnimatePresence>
     </div>
   );
 }
