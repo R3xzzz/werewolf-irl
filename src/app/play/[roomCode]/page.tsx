@@ -58,7 +58,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const { lang, toggleLang } = useLangStore();
   const { room, loading: roomLoading, error } = useRoomState(roomCode);
   const { players, loading: playersLoading } = usePlayers(room?.id);
-  const { votes } = useVotes(room?.id);
+  const { votes, setVotes } = useVotes(room?.id);
 
   const [roleRevealed, setRoleRevealed] = useState(false);
   const [isCastingVote, setIsCastingVote] = useState(false);
@@ -86,6 +86,12 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
       router.push('/join');
     }
   }, [playerId, router, mounted]);
+
+  useEffect(() => {
+    if (room?.phase === 'voting') {
+       setVotes([]); // Force clear on phase change to prevent auto-select bug
+    }
+  }, [room?.phase, setVotes]);
 
   useEffect(() => {
     if (!playersLoading && mounted && playerId) {
@@ -200,13 +206,21 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      });
   };
 
+  const handleTroubleSave = async () => {
+     if (room.settings?.troublemakerUsed) return;
+     await supabase.from('rooms').update({ 
+        settings: { ...room.settings, dayAction: null } 
+     }).eq('id', room.id);
+  };
+
   const confirmTrouble = async () => {
      if (troubleSelection.length !== 2) return;
      await supabase.from('rooms').update({ 
         settings: { 
            ...room.settings, 
            troubleCandidates: troubleSelection,
-           troublemakerUsed: true 
+           troublemakerUsed: true,
+           dayAction: null
         } 
      }).eq('id', room.id);
      
@@ -228,7 +242,14 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const handlePacifistAction = async (useNow: boolean) => {
      if (room.settings?.pacifistUsed) return;
      
+     const s = room.settings || {};
+     let updatedSettings = { ...s };
+
      if (!useNow) {
+        // Save for later - transition to Troublemaker if one exists
+        const hasTroublemaker = alivePlayers.some(p => p.role === 'troublemaker') && !s.troublemakerUsed;
+        updatedSettings.dayAction = hasTroublemaker ? 'troublemaker' : null;
+
         sendPopup({
            type: 'popup',
            visibility: 'private',
@@ -240,27 +261,14 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
            icon: '🛡️',
            durationMs: 4000
         });
-        return;
+     } else {
+        // Use now
+        updatedSettings.pacifistUsed = true;
+        updatedSettings.pacifistActive = true;
+        updatedSettings.dayAction = null;
      }
 
-     const updates: any = {
-        ...room.settings,
-        pacifistUsed: true,
-        pacifistActive: true
-     };
-
-     await supabase.from('rooms').update({ settings: updates }).eq('id', room.id);
-
-     sendPopup({
-        type: 'popup',
-        visibility: 'public',
-        title_en: '☮ Peace Chosen',
-        title_id: '☮ Perdamaian Terpilih',
-        desc_en: 'No one will be eliminated today.',
-        desc_id: 'Tidak ada yang dieliminasi hari ini.',
-        icon: '🕊️',
-        durationMs: 6000
-     });
+     await supabase.from('rooms').update({ settings: updatedSettings }).eq('id', room.id);
   };
 
   const handleCupidSelect = (targetId: string) => {
@@ -529,7 +537,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
               )}
 
               {/* Pacifist Day Block */}
-              {room.phase === 'day' && me.role === 'pacifist' && !room.settings?.pacifistUsed && (
+              {room.phase === 'day' && me.role === 'pacifist' && room.settings?.dayAction === 'pacifist' && !room.settings?.pacifistUsed && (
                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
                     <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
                        {lang === 'en' ? 'Pacifist Ability' : 'Kemampuan Pacifist'}
@@ -540,6 +548,40 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                           {lang === 'en' ? 'Gunakan Skill Sekarang' : 'Gunakan Skill Sekarang'}
                        </Button>
                        <Button variant="secondary" className="w-full h-10 opacity-70" onClick={() => handlePacifistAction(false)}>
+                          {lang === 'en' ? 'Simpan Untuk Hari Lain' : 'Simpan Untuk Hari Lain'}
+                       </Button>
+                    </div>
+                 </motion.div>
+              )}
+
+              {/* Troublemaker Day Block */}
+              {room.phase === 'day' && me.role === 'troublemaker' && room.settings?.dayAction === 'troublemaker' && !room.settings?.troublemakerUsed && (
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
+                       {lang === 'en' ? 'Troublemaker Ability' : 'Kemampuan Troublemaker'}
+                    </h3>
+                    <p className="text-xs text-slate-400 mb-4">{lang === 'en' ? 'Choose 2 players to restrict today\'s voting.' : 'Pilih 2 pemain untuk membatasi voting hari ini.'}</p>
+                    
+                    <div className="grid grid-cols-2 gap-2 mb-4 max-h-40 overflow-y-auto">
+                       {alivePlayers.filter(p => p.id !== me.id).map(p => {
+                          const isSelected = troubleSelection.includes(p.id);
+                          return (
+                             <button
+                                key={p.id}
+                                onClick={() => handleTroubleSelect(p.id)}
+                                className={`p-2 text-xs rounded border transition-all ${isSelected ? 'bg-wolf-900 border-wolf-500 text-white' : 'bg-forest-950 border-white/5 text-slate-400 hover:border-moon-400'}`}
+                             >
+                                {p.name}
+                             </button>
+                          );
+                       })}
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                       <Button className="w-full h-12" disabled={troubleSelection.length !== 2} onClick={confirmTrouble}>
+                          {lang === 'en' ? 'Gunakan Skill Sekarang' : 'Gunakan Skill Sekarang'}
+                       </Button>
+                       <Button variant="secondary" className="w-full h-10 opacity-70" onClick={handleTroubleSave}>
                           {lang === 'en' ? 'Simpan Untuk Hari Lain' : 'Simpan Untuk Hari Lain'}
                        </Button>
                     </div>

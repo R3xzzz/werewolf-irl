@@ -66,30 +66,37 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
       if (newPhase === 'day') {
          const s = room.settings || {};
-         
+         let updatedSettings = { ...s, dayAction: null };
+
+         // Check who should act first
+         const hasPacifist = alivePlayers.some(p => p.role === 'pacifist') && !s.pacifistUsed;
+         const hasTroublemaker = alivePlayers.some(p => p.role === 'troublemaker') && !s.troublemakerUsed;
+
+         if (hasPacifist) {
+            updatedSettings.dayAction = 'pacifist';
+         } else if (hasTroublemaker) {
+            updatedSettings.dayAction = 'troublemaker';
+         }
+
+         updates.settings = updatedSettings;
+
+         // Initial Day Popups (History / News)
          if (s.pacifistActive) {
             sendPopup({
-               type: 'popup',
-               visibility: 'public',
-               title_en: '☮ Peace Chosen',
-               title_id: '☮ Perdamaian Terpilih',
-               desc_en: 'No one will be eliminated today by the Pacifist.',
-               desc_id: 'Tidak ada yang dieliminasi hari ini oleh Pacifist.',
-               icon: '🕊️',
-               durationMs: 8000
+               type: 'popup', visibility: 'public',
+               title_en: '☮ Peace Chosen', title_id: '☮ Perdamaian Terpilih',
+               desc_en: 'No one will be eliminated today by the Pacifist.', desc_id: 'Tidak ada yang dieliminasi hari ini oleh Pacifist.',
+               icon: '🕊️', durationMs: 8000
             });
          }
 
          if (s.troubleCandidates) {
             sendPopup({
-               type: 'popup',
-               visibility: 'public',
-               title_en: 'Trouble Brews!',
-               title_id: 'Onar Dimulai!',
+               type: 'popup', visibility: 'public',
+               title_en: 'Trouble Brews!', title_id: 'Onar Dimulai!',
                desc_en: `Today's vote restricted to: ${players.find(p => p.id === s.troubleCandidates[0])?.name} vs ${players.find(p => p.id === s.troubleCandidates[1])?.name}`,
                desc_id: `Voting hari ini terbatas antara: ${players.find(p => p.id === s.troubleCandidates[0])?.name} vs ${players.find(p => p.id === s.troubleCandidates[1])?.name}`,
-               icon: '⚖️',
-               durationMs: 8000
+               icon: '⚖️', durationMs: 8000
             });
          }
       }
@@ -173,10 +180,14 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       if (currentRoleAction.id === 'alpha_wolf' && newSettings.alphaConvertTargetId) {
          const targetId = newSettings.alphaConvertTargetId;
          const target = actualPlayers.find(p => p.id === targetId);
-         if (target) {
+         const isProtected = target?.id === newSettings.lastProtectedPlayerId;
+
+         if (target && !isProtected) {
             await supabase.from('players').update({ role: 'werewolf', team: 'werewolf' }).eq('id', targetId);
             newSettings.historyLog.push(`Alpha Wolf converted ${target.name} into a Werewolf.`);
             newSettings.alphaConverted = true;
+         } else if (isProtected) {
+            newSettings.historyLog.push(`Alpha Wolf tried to convert ${target?.name} but they were PROTECTED.`);
          }
          newSettings.alphaConvertTargetId = null;
       }
@@ -194,6 +205,21 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       }
    };
 
+   const skipDayAction = async () => {
+      if (!room) return;
+      const s = room.settings || {};
+      let updatedSettings = { ...s };
+
+      if (s.dayAction === 'pacifist') {
+         const hasTroublemaker = alivePlayers.some(p => p.role === 'troublemaker') && !s.troublemakerUsed;
+         updatedSettings.dayAction = hasTroublemaker ? 'troublemaker' : null;
+      } else if (s.dayAction === 'troublemaker') {
+         updatedSettings.dayAction = null;
+      }
+
+      await supabase.from('rooms').update({ settings: updatedSettings }).eq('id', room.id);
+   };
+
    const killPlayer = async (playerId: string, isCascade = false, source?: string) => {
       const player = players.find(p => p.id === playerId);
       if (!player || !player.alive) return;
@@ -201,7 +227,13 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       const role = ROLES[player.role];
       let updatesToRoomSettings = { ...(room?.settings || {}) };
 
-      if (source === 'werewolf') {
+      if (source === 'werewolf' || source === 'alpha_wolf') {
+         const isProtected = room?.settings?.lastProtectedPlayerId === playerId;
+         if (isProtected) {
+            // Protected by Bodyguard - Survive!
+            return;
+         }
+
          if (player.role === 'diseased') {
             updatesToRoomSettings.wolvesDisabled = true;
          } else if (player.role === 'cursed') {
@@ -526,13 +558,29 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                               </div>
                            </div>
                         ) : (
-                           <>
-                              <p className="text-lg text-slate-400 mb-8">
-                                 {room.settings?.pacifistActive ? (lang === 'en' ? 'Peace has been chosen. Voting is skipped.' : 'Perdamaian dipilih. Voting dilewati.') : (lang === 'en' ? 'Let the village discuss and debate.' : 'Biarin warga diskusi.')}
-                              </p>
-                              {!room.settings?.pacifistActive && <Button size="lg" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Open Voting' : 'Buka Voting'}</Button>}
-                              {room.settings?.pacifistActive && <Button size="lg" onClick={() => changePhase('night_transition')}>{lang === 'en' ? 'Proceed to Night' : 'Lanjut ke Malam'}</Button>}
-                           </>
+                           <div className="flex flex-col items-center">
+                              {room.settings?.dayAction ? (
+                                 <div className="bg-forest-900 p-6 rounded-xl border border-white/10 mb-8 w-full max-w-md">
+                                    <h4 className="text-xl text-moon-400 font-bold mb-2">
+                                       {room.settings.dayAction === 'pacifist' ? (lang === 'en' ? 'Pacifist Choice' : 'Pilihan Pacifist') : (lang === 'en' ? 'Troublemaker Choice' : 'Pilihan Troublemaker')}
+                                    </h4>
+                                    <p className="text-slate-400 mb-6 italic">
+                                       {lang === 'en' ? 'Waiting for the player to decide...' : 'Menunggu pemain untuk memutuskan...'}
+                                    </p>
+                                    <Button variant="secondary" className="w-full" onClick={skipDayAction}>
+                                       {lang === 'en' ? 'Skip Action (Host Force)' : 'Lewati Aksi (Paksa Host)'}
+                                    </Button>
+                                 </div>
+                              ) : (
+                                 <>
+                                    <p className="text-lg text-slate-400 mb-8">
+                                       {room.settings?.pacifistActive ? (lang === 'en' ? 'Peace has been chosen. Voting is skipped.' : 'Perdamaian dipilih. Voting dilewati.') : (lang === 'en' ? 'Let the village discuss and debate.' : 'Biarin warga diskusi.')}
+                                    </p>
+                                    {!room.settings?.pacifistActive && <Button size="lg" onClick={() => changePhase('voting')}>{lang === 'en' ? 'Open Voting' : 'Buka Voting'}</Button>}
+                                    {room.settings?.pacifistActive && <Button size="lg" onClick={() => changePhase('night_transition')}>{lang === 'en' ? 'Proceed to Night' : 'Lanjut ke Malam'}</Button>}
+                                 </>
+                              )}
+                           </div>
                         )}
                      </div>
                   )}
