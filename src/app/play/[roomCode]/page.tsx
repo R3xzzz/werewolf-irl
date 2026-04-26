@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRoomState } from "../../../hooks/useRoomState";
@@ -69,11 +69,13 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const [kicked, setKicked] = useState(false);
   const [currentPopup, setCurrentPopup] = useState<GamePopupEvent | null>(null);
 
-  useGameBroadcast(roomCode, (popup) => {
+  const onPopup = useCallback((popup: GamePopupEvent) => {
     if (popup.visibility === 'public' || (popup.visibility === 'private' && popup.targetId === playerId)) {
       setCurrentPopup(popup);
     }
-  });
+  }, [playerId]);
+
+  const { sendPopup } = useGameBroadcast(roomCode, onPopup);
 
   useEffect(() => {
     setMounted(true);
@@ -196,7 +198,6 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      });
   };
 
-  const { sendPopup } = useGameBroadcast(roomCode);
 
   const confirmTrouble = async () => {
      if (troubleSelection.length !== 2) return;

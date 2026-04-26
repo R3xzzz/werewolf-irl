@@ -29,10 +29,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     if (size === 'lg') classes += " h-14 rounded-xl px-8 text-lg font-serif uppercase tracking-widest";
     if (size === 'icon') classes += " h-10 w-10";
 
-    const MotionComp = motion(Comp as any);
+    if (asChild) {
+      return (
+        <Slot
+          className={cn(classes, className)}
+          ref={ref}
+          {...props}
+        />
+      )
+    }
 
     return (
-      <MotionComp
+      <motion.button
         className={cn(classes, className)}
         ref={ref}
         disabled={disabled}

@@ -8,7 +8,8 @@ import { Input } from "../../components/ui/Input";
 import { supabase } from "../../lib/supabase";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import { useLangStore } from "../../store/useLangStore";
-import { Scanner } from '@yudiel/react-qr-scanner';
+import dynamic from "next/dynamic";
+const Scanner = dynamic(() => import("@yudiel/react-qr-scanner").then(m => m.Scanner), { ssr: false });
 
 export default function JoinRoomPage() {
   const [playerName, setPlayerName] = useState("");
