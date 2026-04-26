@@ -17,7 +17,7 @@ export default function JoinRoomPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const setPlayer = usePlayerStore((state) => state.setPlayer);
+  const { playerId, setPlayer } = usePlayerStore();
   const { lang, toggleLang } = useLangStore();
   const [showScanner, setShowScanner] = useState(false);
 
@@ -87,14 +87,38 @@ export default function JoinRoomPage() {
       let finalPlayerId = '';
 
       if (existingPlayers && existingPlayers.length > 0) {
-        // Reconnect flow: If name exists, just log them back into that player!
-        finalPlayerId = existingPlayers[0].id;
+        const p = existingPlayers[0];
+        const thirtySecondsAgo = new Date(Date.now() - 30000);
+        const lastSeen = p.last_seen ? new Date(p.last_seen) : new Date(0);
+
+        if (lastSeen > thirtySecondsAgo) {
+           // Player is active! Check if it's the SAME person (reconnect)
+           if (p.id === playerId) {
+              finalPlayerId = p.id;
+           } else {
+              throw new Error(lang === 'en' ? "This name is already taken in this room." : "Nama sudah digunakan di room ini.");
+           }
+        } else {
+           // Player is inactive/timed out. Remove old record so we can join fresh
+           await supabase.from('players').delete().eq('id', p.id);
+           
+           const { data: playerData, error: playerInsertError } = await supabase
+             .from('players')
+             .insert([
+               { room_id: roomData.id, name: playerName.trim(), last_seen: new Date().toISOString() }
+             ])
+             .select()
+             .single();
+
+           if (playerInsertError) throw playerInsertError;
+           finalPlayerId = playerData.id;
+        }
       } else {
         // 3. Join the Room as a new Player
         const { data: playerData, error: playerInsertError } = await supabase
           .from('players')
           .insert([
-            { room_id: roomData.id, name: playerName.trim() }
+            { room_id: roomData.id, name: playerName.trim(), last_seen: new Date().toISOString() }
           ])
           .select()
           .single();
@@ -135,7 +159,11 @@ export default function JoinRoomPage() {
         <h1 className="font-serif text-3xl font-bold text-center mb-8">{lang === 'en' ? 'Join Game' : 'Gabung Game'}</h1>
         
         {error && (
-          <div className="mb-4 p-3 bg-wolf-900/50 border border-wolf-500/50 rounded-md text-wolf-100 text-sm text-center">
+          <div className="mb-6 p-4 bg-wolf-950/80 border border-wolf-500/30 rounded-xl text-wolf-100 text-sm text-center flex flex-col items-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.1)]">
+            <span className="text-xl">
+               {error.includes("not found") || error.includes("ditemukan") ? "⚠" : 
+                error.includes("already taken") || error.includes("sudah digunakan") ? "🚫" : "👋"}
+            </span>
             {error}
           </div>
         )}

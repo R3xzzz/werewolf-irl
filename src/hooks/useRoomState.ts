@@ -30,7 +30,8 @@ export function useRoomState(roomCode: string | null) {
         }
       } catch (err: any) {
         if (isMounted) {
-          // Intentionally not using console.error to avoid Next.js dev overlay
+          // If room not found or fatal error, redirect to main site
+          window.location.href = 'https://werewolfirl.my.id/';
           setError(err.message || "Room not found");
           setLoading(false);
         }
@@ -53,6 +54,7 @@ export function useRoomState(roomCode: string | null) {
         (payload) => {
           if (isMounted) {
             if (payload.eventType === 'DELETE') {
+              window.location.href = 'https://werewolfirl.my.id/';
               setRoom(null);
               setError("Room has been closed by the host.");
             } else {

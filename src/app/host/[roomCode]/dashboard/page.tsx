@@ -38,7 +38,22 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
    // Filter the central Night Action Roles down to only the ones actually in THIS game
    const gameNightRoles = getNightActionRoles().filter(r => activeRoleIds.includes(r.id));
 
-   const changePhase = async (newPhase: string, winner?: string) => {
+  // Host Heartbeat
+  useEffect(() => {
+    const hostPlayerId = players.find(p => p.is_host)?.id;
+    if (!hostPlayerId) return;
+    
+    const heartbeat = async () => {
+      try {
+        await supabase.from('players').update({ last_seen: new Date().toISOString() }).eq('id', hostPlayerId);
+      } catch (e) {}
+    };
+    heartbeat();
+    const interval = setInterval(heartbeat, 5000);
+    return () => clearInterval(interval);
+  }, [players]);
+
+  const changePhase = async (newPhase: string, winner?: string) => {
       if (!room) return;
       
       const updates: any = { phase: newPhase };

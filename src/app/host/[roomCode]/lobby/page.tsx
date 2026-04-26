@@ -32,6 +32,40 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
     }
   }, [room?.phase, router, roomCode]);
 
+  // Host Heartbeat
+  useEffect(() => {
+    const hostPlayerId = players.find(p => p.is_host)?.id;
+    if (!hostPlayerId) return;
+    
+    const heartbeat = async () => {
+      try {
+        await supabase.from('players').update({ last_seen: new Date().toISOString() }).eq('id', hostPlayerId);
+      } catch (e) {}
+    };
+    heartbeat();
+    const interval = setInterval(heartbeat, 5000);
+    return () => clearInterval(interval);
+  }, [players]);
+
+  // Cleanup disconnected players (Lobby only)
+  useEffect(() => {
+    if (room?.phase !== 'lobby' || !room?.id) return;
+    
+    const cleanup = async () => {
+      try {
+        const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+        await supabase.from('players')
+          .delete()
+          .eq('room_id', room.id)
+          .eq('is_host', false)
+          .lt('last_seen', thirtySecondsAgo);
+      } catch (e) {}
+    };
+    
+    const interval = setInterval(cleanup, 10000);
+    return () => clearInterval(interval);
+  }, [room?.id, room?.phase]);
+
   // Minimum 4 players required
   const canStart = players.filter(p => !p.is_host).length >= 4 || (room && room.code === 'TEST'); // allowing TEST code for debug without 4 players
 
