@@ -237,7 +237,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center text-center">
          
-         {!me.alive ? (
+         {(!me.alive && !(room.phase === 'hunter_revenge' && me.role === 'hunter')) ? (
            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
               <h1 className="text-4xl font-serif text-wolf-600 mb-4">{lang === 'en' ? 'YOU DIED' : 'KAMU MATI'}</h1>
               <p className="text-slate-400 max-w-sm mx-auto">{lang === 'en' ? 'Please remain quiet for the rest of the game so you do not spoil it for the living.' : 'Tolong tetap diam selama sisa permainan agar tidak merusaknya bagi yang masih hidup.'}</p>
