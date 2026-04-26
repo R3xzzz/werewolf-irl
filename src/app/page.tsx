@@ -59,13 +59,13 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="text-center mb-12"
+          className="text-center mb-10 md:mb-12"
         >
-          <h1 className="font-serif text-5xl md:text-6xl font-bold tracking-widest text-moon-50 mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] relative inline-block">
+          <h1 className="font-serif text-4xl md:text-6xl font-bold tracking-widest text-moon-50 mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] relative inline-block">
             WEREWOLF
-            <span className="absolute -top-3 -right-12 text-[10px] md:text-xs font-sans bg-gradient-to-r from-moon-600 via-moon-200 to-moon-600 bg-[length:200%_100%] animate-shimmer text-forest-950 px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(167,139,250,0.4)] rotate-12 font-bold tracking-wider border border-white/20">BETA</span>
+            <span className="absolute -top-2 -right-4 md:-top-3 md:-right-12 text-[9px] md:text-xs font-sans bg-gradient-to-r from-moon-600 via-moon-200 to-moon-600 bg-[length:200%_100%] animate-shimmer text-forest-950 px-2 md:px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(167,139,250,0.4)] rotate-12 font-bold tracking-wider border border-white/20">BETA</span>
           </h1>
-          <p className="font-sans text-moon-200/80 text-lg uppercase tracking-[0.3em]">
+          <p className="font-sans text-moon-200/80 text-sm md:text-lg uppercase tracking-[0.2em] md:tracking-[0.3em]">
             {lang === 'en' ? 'Trust No One.' : 'Jangan Percaya Siapapun.'}
           </p>
         </motion.div>
@@ -91,14 +91,14 @@ export default function Home() {
         
         <RulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
         
-        <div className="mt-12 text-center text-sm text-slate-500 max-w-[250px]">
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mb-4">
+        <div className="mt-12 text-center text-[13px] md:text-sm text-slate-500 w-full max-w-sm px-4">
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mb-4 leading-relaxed">
             {lang === 'en' ? 'An IRL party game companion for 4-15+ players. Play face-to-face.' : 'Asisten main Werewolf asli untuk 4-15+ orang. Main langsung tatap muka.'}
           </motion.p>
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="text-sm font-medium text-slate-500">
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="font-medium text-slate-500">
             {lang === 'en' ? 'Created by' : 'Dibuat oleh'} <a href="https://instagram.com/yzdddddddd_" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300 hover:text-white transition-colors">@yzdddddddd_</a>
             <br />
-            <span className="text-xs opacity-80">
+            <span className="text-[11px] md:text-xs opacity-80">
               {lang === 'en' ? 'supported by' : 'didukung oleh'} <a href="https://instagram.com/awalstarjoo._" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300/80 hover:text-white transition-colors">@awalstarjoo._</a>, <a href="https://instagram.com/enruhfzrmd" target="_blank" rel="noopener noreferrer" className="font-bold text-moon-300/80 hover:text-white transition-colors">@enruhfzrmd</a>
             </span>
           </motion.p>
