@@ -316,7 +316,7 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       setTimeout(() => {
          if (typeof window !== 'undefined') {
             // Re-fetch or check current state via closure is tricky, but we can check the state at timeout time
-            // However, the best way is to only fire this if the phase remained 'voting'
+            if (!room) return;
             supabase.from('rooms').select('phase').eq('id', room.id).single().then(({ data }) => {
                if (data && data.phase === 'voting') {
                   changePhase('night_transition');
