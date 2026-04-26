@@ -11,6 +11,7 @@ import { useLangStore } from "../../../../store/useLangStore";
 import { supabase } from "../../../../lib/supabase";
 import { getNightActionRoles, ROLES } from "../../../../lib/roles";
 import { RulesModal } from "../../../../components/RulesModal";
+import { useGameBroadcast } from "../../../../hooks/useGameBroadcast";
 
 export default function HostDashboardPage({ params }: { params: Promise<{ roomCode: string }> }) {
    const resolvedParams = use(params);
@@ -24,6 +25,8 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
 
    const [nightStep, setNightStep] = useState(-1); // -1 = Everyone close eyes
    const [rulesOpen, setRulesOpen] = useState(false);
+   
+   const { sendPopup } = useGameBroadcast(roomCode);
 
    // Derived state
    const actualPlayers = players.filter(p => !p.is_host);
@@ -60,8 +63,102 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
       }
    };
 
+   const confirmNightAction = async (currentRoleAction: any, rolePlayers: any[]) => {
+      for (const p of rolePlayers) {
+         if (!p.action_target_id) continue;
+         const target = actualPlayers.find(t => t.id === p.action_target_id);
+         if (!target) continue;
+
+         if (currentRoleAction.id === 'seer') {
+            const targetRole = ROLES[target.role];
+            sendPopup({
+               type: 'popup',
+               visibility: 'private',
+               targetId: p.id,
+               title_en: `${target.name} is ${targetRole?.name}`,
+               title_id: `${target.name} adalah ${targetRole?.name_id}`,
+               icon: '👁️',
+               durationMs: 8000
+            });
+         } else if (currentRoleAction.id === 'bodyguard') {
+            // Save last protected
+            await supabase.from('rooms').update({
+               settings: { ...room?.settings, lastProtectedPlayerId: target.id }
+            }).eq('id', room?.id);
+         }
+      }
+
+      const nextStep = nightStep + 1;
+      setNightStep(nextStep);
+      await supabase.from('rooms').update({
+         settings: { ...room?.settings, activeNightRole: gameNightRoles[nextStep]?.id || null }
+      }).eq('id', room?.id);
+      
+      if (rolePlayers.length > 0) {
+         await supabase.from('players').update({ action_target_id: null }).in('id', rolePlayers.map(p => p.id));
+      }
+   };
+
    const killPlayer = async (playerId: string) => {
+      const player = players.find(p => p.id === playerId);
+      if (!player) return;
+
+      const role = ROLES[player.role];
+
       await supabase.from('players').update({ alive: false }).eq('id', playerId);
+
+      sendPopup({
+         type: 'popup',
+         visibility: 'public',
+         title_en: `${player.name} died`,
+         title_id: `${player.name} tereliminasi`,
+         desc_en: `Role: ${role?.name || 'Unknown'}`,
+         desc_id: `Peran: ${role?.name_id || 'Tidak diketahui'}`,
+         icon: '☠️',
+         durationMs: 7000
+      });
+
+      let updatesToRoomSettings = { ...(room?.settings || {}) };
+
+      if (room) {
+         const phaseLabel = room.phase.includes('day') || room.phase === 'voting' ? 'Day' : 'Night';
+         const newLog = `${phaseLabel} ${room.round || 1}: ${player.name} (${role?.name}) died.`;
+         const currentHistory = updatesToRoomSettings.historyLog || [];
+         updatesToRoomSettings.historyLog = [...currentHistory, newLog];
+      }
+
+      let newPhase = room?.phase;
+
+      if (player.role === 'hunter') {
+         updatesToRoomSettings.phaseBeforeRevenge = room?.phase;
+         newPhase = 'hunter_revenge';
+         
+         // Send private popup to hunter to let them know it's time
+         sendPopup({
+            type: 'popup',
+            visibility: 'private',
+            targetId: player.id,
+            title_en: `Take your revenge!`,
+            title_id: `Balas dendammu!`,
+            desc_en: `Choose one player to die with you.`,
+            desc_id: `Pilih satu pemain untuk mati bersamamu.`,
+            icon: '🔫',
+            durationMs: 6000
+         });
+      }
+
+      if (player.role === 'seer') {
+         const apprentice = players.find(p => p.role === 'apprentice_seer' && p.alive);
+         if (apprentice) {
+            await supabase.from('players').update({ role: 'seer' }).eq('id', apprentice.id);
+            updatesToRoomSettings.historyLog.push(`Apprentice Seer (${apprentice.name}) became the new Seer.`);
+         }
+      }
+
+      await supabase.from('rooms').update({
+         phase: newPhase,
+         settings: updatesToRoomSettings
+      }).eq('id', room?.id);
    };
 
    // Auto Win Condition Checker
@@ -115,9 +212,12 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             <div className="text-center p-8">
                <h3 className="text-2xl font-serif text-wolf-100 mb-4">{lang === 'en' ? 'Preparation' : 'Persiapan'}</h3>
                <p className="text-xl text-slate-300 mb-8">{lang === 'en' ? '"Everyone, close your eyes."' : '"Semuanya, tutup mata kalian."'}</p>
-               <Button size="lg" onClick={() => {
+               <Button size="lg" onClick={async () => {
                   setNightStep(0);
                   changePhase('night');
+                  await supabase.from('rooms').update({
+                     settings: { ...room?.settings, activeNightRole: gameNightRoles[0]?.id || null }
+                  }).eq('id', room?.id);
                }}>{lang === 'en' ? 'Begin Night Order' : 'Mulai Malam'}</Button>
             </div>
          );
@@ -128,9 +228,12 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
             <div className="text-center p-8">
                <h3 className="text-2xl font-serif text-moon-100 mb-4">{lang === 'en' ? 'Dawn Approaches' : 'Pagi Telah Tiba'}</h3>
                <p className="text-xl text-slate-300 mb-8">{lang === 'en' ? '"Everyone, wake up."' : '"Semuanya, bangun."'}</p>
-               <Button size="lg" onClick={() => {
+               <Button size="lg" onClick={async () => {
                   setNightStep(-1);
                   changePhase('day_transition');
+                  await supabase.from('rooms').update({
+                     settings: { ...room?.settings, activeNightRole: null }
+                  }).eq('id', room?.id);
                   setTimeout(() => changePhase('day'), 3000); // Cinematic delay
                }}>{lang === 'en' ? 'Start Day Phase' : 'Mulai Siang'}</Button>
             </div>
@@ -150,20 +253,30 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                </div>
             ) : (
                <div className="my-6">
-                  <p className="text-xl text-moon-200 mb-4">"{lang === 'en' ? (currentRoleAction.name === 'Werewolf' ? 'Werewolves' : currentRoleAction.name + 's') : currentRoleAction.name_id}, {lang === 'en' ? 'wake up."' : 'bangun."'}"</p>
-                  <div className="bg-forest-900 p-4 rounded-lg border border-white/5 inline-block text-left mb-4">
-                     <h4 className="text-sm text-slate-400 mb-2">{lang === 'en' ? 'Players with this role:' : 'Pemain di peran ini:'}</h4>
-                     <ul>
-                        {rolePlayers.map(p => <li key={p.id} className="text-white">{p.name}</li>)}
+                  {/* Player Selections View */}
+                  <div className="bg-forest-900 p-4 rounded-lg border border-white/5 inline-block text-left mb-4 w-full">
+                     <h4 className="text-sm text-slate-400 mb-2">{lang === 'en' ? 'Player Selections:' : 'Pilihan Pemain:'}</h4>
+                     <ul className="space-y-2">
+                        {rolePlayers.map(p => {
+                           const target = actualPlayers.find(t => t.id === p.action_target_id);
+                           return (
+                              <li key={p.id} className="text-white flex justify-between items-center border-b border-white/5 pb-2">
+                                <span>{p.name}</span>
+                                <span className={`font-bold ${target ? 'text-moon-400' : 'text-slate-500 animate-pulse'}`}>
+                                   {target ? `👉 ${target.name}` : (lang === 'en' ? 'Choosing...' : 'Memilih...')}
+                                </span>
+                              </li>
+                           );
+                        })}
                      </ul>
                   </div>
                   <p className="text-lg text-slate-300">{lang === 'en' ? currentRoleAction.description : currentRoleAction.desc_id}</p>
                </div>
             )}
 
-            <div className="mt-8">
-               <Button variant="secondary" size="lg" onClick={() => setNightStep(prev => prev + 1)}>
-                  {lang === 'en' ? 'Next Role' : 'Lanjut'}
+            <div className="mt-8 flex justify-center gap-4">
+               <Button size="lg" onClick={() => confirmNightAction(currentRoleAction, rolePlayers)}>
+                  {lang === 'en' ? 'Confirm & Next Role' : 'Konfirmasi & Lanjut'}
                </Button>
             </div>
          </div>
@@ -243,6 +356,37 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                      </div>
                   )}
 
+                  {room.phase === 'hunter_revenge' && (
+                     <div className="flex-1 flex flex-col items-center justify-center text-center">
+                        <h3 className="text-3xl font-serif text-wolf-400 mb-4">{lang === 'en' ? 'Hunter\'s Revenge' : 'Balas Dendam Hunter'}</h3>
+                        <p className="text-lg text-slate-400 mb-8">{lang === 'en' ? 'Waiting for the Hunter to shoot...' : 'Menunggu Hunter menembak...'}</p>
+                        
+                        {(() => {
+                           const hunter = players.find(p => p.role === 'hunter');
+                           const target = hunter?.action_target_id ? players.find(p => p.id === hunter.action_target_id) : null;
+                           
+                           if (target) {
+                              return (
+                                 <div className="bg-forest-900 p-6 rounded-xl border border-white/10 mb-8">
+                                    <p className="text-xl text-white mb-4">
+                                       {lang === 'en' ? `Hunter aims at: ` : `Hunter membidik: `} 
+                                       <span className="font-bold text-wolf-400">{target.name}</span>
+                                    </p>
+                                    <Button variant="danger" size="lg" onClick={async () => {
+                                       await killPlayer(target.id);
+                                       await supabase.from('players').update({ action_target_id: null }).eq('id', hunter.id);
+                                       await supabase.from('rooms').update({ phase: room.settings?.phaseBeforeRevenge || 'day' }).eq('id', room.id);
+                                    }}>
+                                       {lang === 'en' ? 'Confirm Shot' : 'Konfirmasi Tembakan'}
+                                    </Button>
+                                 </div>
+                              );
+                           }
+                           return null;
+                        })()}
+                     </div>
+                  )}
+
                   {room.phase === 'voting' && (
                      <div className="flex-1 flex flex-col max-w-lg w-full mx-auto">
                         <div className="text-center mb-6">
@@ -259,17 +403,24 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                               {groupedVotes.map(({ target, voters }) => (
                                  <div key={target?.id || Math.random()} className="bg-forest-900 border border-white/10 p-4 rounded-xl flex items-center justify-between">
                                     <div>
-                                       <h4 className="text-xl font-bold text-white mb-1"><span className="text-wolf-400 mr-2">{voters.length}</span> {target?.name || 'Unknown'}</h4>
+                                       <h4 className="text-xl font-bold text-white mb-1"><span className="text-wolf-400 mr-2">{voters.length}</span> {target?.name || (lang === 'en' ? 'No Elimination' : 'Tidak Ada Eliminasi')}</h4>
                                        <p className="text-xs text-slate-400">Voters: {voters.join(', ')}</p>
                                     </div>
-                                    {target?.alive && (
+                                    {target?.alive ? (
                                        <button
                                           onClick={() => killPlayer(target.id)}
                                           className="ml-4 bg-wolf-950 text-wolf-400 border border-wolf-500/50 hover:bg-wolf-900 px-4 py-2 rounded text-sm font-bold transition-colors uppercase tracking-widest"
                                        >
                                           {lang === 'en' ? 'Eliminate' : 'Eliminasi'}
                                        </button>
-                                    )}
+                                    ) : !target ? (
+                                       <button
+                                          onClick={() => changePhase('night_transition')}
+                                          className="ml-4 bg-moon-950 text-moon-400 border border-moon-500/50 hover:bg-moon-900 px-4 py-2 rounded text-sm font-bold transition-colors uppercase tracking-widest"
+                                       >
+                                          {lang === 'en' ? 'Confirm Skip' : 'Konfirmasi Lewati'}
+                                       </button>
+                                    ) : null}
                                  </div>
                               ))}
                            </div>

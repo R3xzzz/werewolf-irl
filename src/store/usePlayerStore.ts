@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface PlayerState {
   playerId: string | null;
@@ -19,7 +19,8 @@ export const usePlayerStore = create<PlayerState>()(
       clearPlayer: () => set({ playerId: null, roomCode: null, playerName: null }),
     }),
     {
-      name: 'werewolf-player-storage', // saves to localStorage so player can reconnect on refresh
+      name: 'werewolf-player-storage',
+      storage: createJSONStorage(() => sessionStorage), // Use sessionStorage so different tabs have different identities for testing
     }
   )
 );

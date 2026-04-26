@@ -96,33 +96,48 @@ export function RulesModal({ isOpen, onClose }: RulesModalProps) {
               <div className="space-y-8">
                 <div>
                    <h3 className="text-xl font-serif text-moon-400 mb-4 border-b border-moon-400/30 pb-2">{lang === 'en' ? 'Village Team' : 'Tim Warga'}</h3>
-                   <div className="space-y-4">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      {villageRoles.map(role => (
-                       <div key={role.id} className="bg-white/5 p-4 rounded-lg border border-white/5">
-                         <h4 className="font-bold text-white mb-1">{lang === 'en' ? role.name : role.name_id}</h4>
-                         <p className="text-sm text-slate-400">{lang === 'en' ? role.description : role.desc_id}</p>
+                       <div key={role.id} className="bg-forest-900/40 p-5 rounded-xl border border-white/10 shadow-sm hover:border-moon-400/50 transition-colors">
+                         <div className="flex justify-between items-start mb-3">
+                           <h4 className="font-bold text-lg text-white">
+                             {lang === 'en' ? role.name : role.name_id}
+                           </h4>
+                           <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 shrink-0">Village</span>
+                         </div>
+                         <p className="text-sm text-slate-200 leading-relaxed">{lang === 'en' ? role.description : role.desc_id}</p>
                        </div>
                      ))}
                    </div>
                 </div>
                 <div>
                    <h3 className="text-xl font-serif text-wolf-400 mb-4 border-b border-wolf-400/30 pb-2">{lang === 'en' ? 'Werewolf Team' : 'Tim Serigala'}</h3>
-                   <div className="space-y-4">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      {werewolfRoles.map(role => (
-                       <div key={role.id} className="bg-wolf-950/30 p-4 rounded-lg border border-wolf-500/20">
-                         <h4 className="font-bold text-white mb-1">{lang === 'en' ? role.name : role.name_id}</h4>
-                         <p className="text-sm text-slate-400">{lang === 'en' ? role.description : role.desc_id}</p>
+                       <div key={role.id} className="bg-wolf-950/40 p-5 rounded-xl border border-wolf-500/20 shadow-sm hover:border-wolf-400/50 transition-colors">
+                         <div className="flex justify-between items-start mb-3">
+                           <h4 className="font-bold text-lg text-white">
+                             {lang === 'en' ? role.name : role.name_id}
+                           </h4>
+                           <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-red-500/20 text-red-400 border border-red-500/30 shrink-0">Werewolf</span>
+                         </div>
+                         <p className="text-sm text-slate-200 leading-relaxed">{lang === 'en' ? role.description : role.desc_id}</p>
                        </div>
                      ))}
                    </div>
                 </div>
                 <div>
                    <h3 className="text-xl font-serif text-amber-400 mb-4 border-b border-amber-400/30 pb-2">{lang === 'en' ? 'Neutral Team' : 'Tim Netral'}</h3>
-                   <div className="space-y-4">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      {neutralRoles.map(role => (
-                       <div key={role.id} className="bg-amber-950/30 p-4 rounded-lg border border-amber-500/20">
-                         <h4 className="font-bold text-white mb-1">{lang === 'en' ? role.name : role.name_id}</h4>
-                         <p className="text-sm text-slate-400">{lang === 'en' ? role.description : role.desc_id}</p>
+                       <div key={role.id} className="bg-amber-950/40 p-5 rounded-xl border border-amber-500/20 shadow-sm hover:border-amber-400/50 transition-colors">
+                         <div className="flex justify-between items-start mb-3">
+                           <h4 className="font-bold text-lg text-white">
+                             {lang === 'en' ? role.name : role.name_id}
+                           </h4>
+                           <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">Neutral</span>
+                         </div>
+                         <p className="text-sm text-slate-200 leading-relaxed">{lang === 'en' ? role.description : role.desc_id}</p>
                        </div>
                      ))}
                    </div>

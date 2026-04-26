@@ -12,6 +12,8 @@ import { ROLES } from "../../../lib/roles";
 import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/Button";
 import { RulesModal } from "../../../components/RulesModal";
+import { useGameBroadcast, GamePopupEvent } from "../../../hooks/useGameBroadcast";
+import { CinematicPopup } from "../../../components/CinematicPopup";
 
 // Full screen transition cinematic component
 const PhaseTransition = ({ phase, lang }: { phase: string, lang: 'en'|'id' }) => {
@@ -62,6 +64,13 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const [isCastingVote, setIsCastingVote] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [currentPopup, setCurrentPopup] = useState<GamePopupEvent | null>(null);
+
+  useGameBroadcast(roomCode, (popup) => {
+    if (popup.visibility === 'public' || (popup.visibility === 'private' && popup.targetId === playerId)) {
+      setCurrentPopup(popup);
+    }
+  });
 
   useEffect(() => {
     setMounted(true);
@@ -109,7 +118,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
      return "";
   };
 
-  const castVote = async (targetId: string) => {
+  const castVote = async (targetId: string | null) => {
     if (!me.alive || room.phase !== 'voting' || isCastingVote) return;
     setIsCastingVote(true);
     try {
@@ -129,8 +138,25 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
     }
   };
 
+  const castNightAction = async (targetId: string) => {
+     const isAwake = room.settings?.activeNightRole === me.role || (myRole?.isAlwaysAwakeWith?.includes(room.settings?.activeNightRole));
+     
+     if (room.phase === 'hunter_revenge' && me.role === 'hunter') {
+        // Hunter revenge is allowed
+     } else if (!me.alive || room.phase !== 'night' || !isAwake) {
+        return;
+     }
+
+     try {
+       await supabase.from('players').update({ action_target_id: targetId }).eq('id', me.id);
+     } catch (err) {
+       console.error("NIGHT ACTION ERROR", err);
+     }
+  };
+
   return (
     <div className={`min-h-screen flex flex-col p-6 transition-colors duration-1000 ${room.phase.includes('night') ? 'bg-black' : 'bg-forest-950'}`}>
+      <CinematicPopup popup={currentPopup} onClose={() => setCurrentPopup(null)} />
       <AnimatePresence>
          {(room.phase === 'night_transition' || room.phase === 'day_transition') && (
            <PhaseTransition phase={room.phase} lang={lang} />
@@ -220,6 +246,73 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
            <>
               <p className="text-xl text-slate-300 mb-8 min-h-[60px]">{getPhaseMessage()}</p>
               
+              {room.phase === 'night' && (room.settings?.activeNightRole === me.role || myRole?.isAlwaysAwakeWith?.includes(room.settings?.activeNightRole)) && (
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">
+                       {lang === 'en' ? 'Make your move' : 'Pilih targetmu'}
+                    </h3>
+                    <ul className="space-y-2">
+                      {alivePlayers.map(p => {
+                         const isSelected = me.action_target_id === p.id;
+                         const otherWolvesTargeting = myRole?.team === 'werewolf' ? actualPlayers.filter(w => ROLES[w.role]?.team === 'werewolf' && w.id !== me.id && w.action_target_id === p.id) : [];
+                         
+                         return (
+                           <li key={p.id}>
+                             <button
+                               onClick={() => castNightAction(p.id)}
+                               className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-moon-900 border border-moon-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
+                             >
+                                <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                <div className="flex items-center gap-2">
+                                  {otherWolvesTargeting.length > 0 && (
+                                     <div className="flex -space-x-1">
+                                       {otherWolvesTargeting.map(w => (
+                                          <div key={w.id} className="w-5 h-5 rounded-full bg-wolf-600 border border-black text-[9px] flex items-center justify-center font-bold text-white shadow-sm" title={w.name}>
+                                            {w.name.charAt(0).toUpperCase()}
+                                          </div>
+                                       ))}
+                                     </div>
+                                  )}
+                                  {isSelected && <span className="text-xs uppercase tracking-widest text-moon-200">{lang === 'en' ? 'Selected' : 'Terpilih'}</span>}
+                                </div>
+                             </button>
+                           </li>
+                         )
+                      })}
+                    </ul>
+                 </motion.div>
+              )}
+
+              {room.phase === 'hunter_revenge' && (
+                 <div className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-wolf-400 border-b border-white/5 pb-2">
+                       {lang === 'en' ? 'Hunter\'s Revenge' : 'Balas Dendam Hunter'}
+                    </h3>
+                    {me.role === 'hunter' ? (
+                       <ul className="space-y-2">
+                          {alivePlayers.map(p => {
+                             const isSelected = me.action_target_id === p.id;
+                             return (
+                                <li key={p.id}>
+                                   <button
+                                      onClick={() => castNightAction(p.id)}
+                                      className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-900 border border-wolf-500 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-moon-400/50'}`}
+                                   >
+                                      <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                      {isSelected && <span className="text-xs uppercase tracking-widest text-wolf-400">{lang === 'en' ? 'Targeted' : 'Ditargetkan'}</span>}
+                                   </button>
+                                </li>
+                             )
+                          })}
+                       </ul>
+                    ) : (
+                       <p className="text-slate-400 italic">
+                          {lang === 'en' ? 'The Hunter is taking aim...' : 'Hunter sedang membidik targetnya...'}
+                       </p>
+                    )}
+                 </div>
+              )}
+
               {room.phase === 'voting' && (
                  <div className="w-full max-w-md mx-auto mb-8 bg-forest-900 border border-white/10 p-4 rounded-xl">
                     <h3 className="font-serif text-lg mb-4 text-moon-200 border-b border-white/5 pb-2">

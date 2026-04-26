@@ -40,35 +40,39 @@ export default function JoinRoomPage() {
         throw new Error(lang === 'en' ? "Game has already started." : "Game sudah dimulai.");
       }
 
-      // 2. Prevent Duplicate Names in Room
+
       const { data: existingPlayers, error: checkError } = await supabase
         .from('players')
-        .select('name')
+        .select('*')
         .eq('room_id', roomData.id)
-        .ilike('name', playerName.trim()); // Case-insensitive matching
+        .ilike('name', playerName.trim());
 
       if (checkError) throw checkError;
+      
+      let finalPlayerId = '';
+
       if (existingPlayers && existingPlayers.length > 0) {
-        throw new Error(lang === 'en' ? "That name is already taken in this room." : "Nama itu sudah dipakai di room ini.");
-      }
+        // Reconnect flow: If name exists, just log them back into that player!
+        finalPlayerId = existingPlayers[0].id;
+      } else {
+        // 3. Join the Room as a new Player
+        const { data: playerData, error: playerInsertError } = await supabase
+          .from('players')
+          .insert([
+            { room_id: roomData.id, name: playerName.trim() }
+          ])
+          .select()
+          .single();
 
-      // 3. Join the Room as a Player
-      const { data: playerData, error: playerInsertError } = await supabase
-        .from('players')
-        .insert([
-          { room_id: roomData.id, name: playerName.trim() }
-        ])
-        .select()
-        .single();
-
-      if (playerInsertError) {
-        // Fallback for DB-level Unique constraint just in case
-        if (playerInsertError.code === '23505') throw new Error(lang === 'en' ? "That name is already taken." : "Nama itu sudah dipakai.");
-        throw playerInsertError;
+        if (playerInsertError) {
+          if (playerInsertError.code === '23505') throw new Error(lang === 'en' ? "That name is already taken." : "Nama itu sudah dipakai.");
+          throw playerInsertError;
+        }
+        finalPlayerId = playerData.id;
       }
 
       // Save identity locally
-      setPlayer(playerData.id, upperCode, playerName.trim());
+      setPlayer(finalPlayerId, upperCode, playerName.trim());
 
       // Redirect to player waiting screen
       router.push(`/play/${upperCode}`);

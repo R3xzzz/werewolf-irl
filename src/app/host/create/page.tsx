@@ -20,7 +20,6 @@ const generateRoomCode = () => {
 };
 
 export default function CreateRoomPage() {
-  const [hostName, setHostName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -29,7 +28,6 @@ export default function CreateRoomPage() {
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hostName.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -40,7 +38,7 @@ export default function CreateRoomPage() {
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')
         .insert([
-          { code, host_name: hostName.trim(), phase: 'lobby' }
+          { code, host_name: '[MODERATOR]', phase: 'lobby' }
         ])
         .select()
         .single();
@@ -51,7 +49,7 @@ export default function CreateRoomPage() {
       const { data: playerData, error: playerError } = await supabase
         .from('players')
         .insert([
-          { room_id: roomData.id, name: hostName.trim(), is_host: true, role: 'host', team: 'host' }
+          { room_id: roomData.id, name: '[MODERATOR]', is_host: true, role: 'host', team: 'host' }
         ])
         .select()
         .single();
@@ -59,7 +57,7 @@ export default function CreateRoomPage() {
       if (playerError) throw playerError;
 
       // Save identity locally
-      setPlayer(playerData.id, code, hostName.trim());
+      setPlayer(playerData.id, code, '[MODERATOR]');
 
       // Redirect to host lobby
       router.push(`/host/${code}/lobby`);
@@ -94,24 +92,8 @@ export default function CreateRoomPage() {
         )}
 
         <form onSubmit={handleCreateRoom} className="space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="hostName" className="text-sm font-medium text-slate-300">
-              {lang === 'en' ? 'Moderator Name' : 'Nama Moderator'}
-            </label>
-            <Input
-              id="hostName"
-              placeholder={lang === 'en' ? 'e.g. Master Splinter' : 'Cth: Pak Kades'}
-              value={hostName}
-              onChange={(e) => setHostName(e.target.value)}
-              required
-              maxLength={20}
-              disabled={loading}
-              autoFocus
-            />
-          </div>
-          
-          <Button type="submit" disabled={!hostName.trim() || loading} className="w-full">
-            {loading ? (lang === 'en' ? "Initializing Ritual..." : "Mempersiapkan Ritual...") : (lang === 'en' ? "Create Room" : "Buat Room")}
+          <Button type="submit" disabled={loading} className="w-full mt-4">
+            {loading ? (lang === 'en' ? "Initializing Ritual..." : "Mempersiapkan Ritual...") : (lang === 'en' ? "Start New Game" : "Mulai Game Baru")}
           </Button>
 
           <Button type="button" variant="ghost" className="w-full" onClick={() => router.push('/')} disabled={loading}>
