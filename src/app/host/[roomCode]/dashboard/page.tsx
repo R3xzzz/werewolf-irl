@@ -650,7 +650,21 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
                      <div className="flex-1 flex flex-col items-center justify-center text-center">
                         <h3 className="text-4xl font-serif mb-4">Game Over</h3>
                         <p className="text-2xl text-moon-400 mb-8 uppercase font-bold">{room.settings?.winner} Wins!</p>
-                        <Button size="lg" className="w-full max-w-xs" onClick={() => changePhase('lobby')}>Play Again</Button>
+                        <div className="flex flex-col gap-4 w-full max-w-xs">
+                           <Button size="lg" className="w-full" onClick={() => changePhase('lobby')}>
+                              {lang === 'en' ? 'Play Again' : 'Main Lagi'}
+                           </Button>
+                           <Button 
+                             variant="ghost" 
+                             className="text-wolf-500 hover:text-wolf-400 hover:bg-wolf-950/30" 
+                             onClick={async () => {
+                                if (room) await supabase.from('rooms').delete().eq('id', room.id);
+                                router.push('/');
+                             }}
+                           >
+                             {lang === 'en' ? 'Close Room & Exit' : 'Tutup Room & Keluar'}
+                           </Button>
+                        </div>
                      </div>
                   )}
                </div>

@@ -365,10 +365,14 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                         💕 {lang === 'en' ? 'Lovers also win together!' : 'Kekasih juga menang bersama!'}
                      </p>
                   )}
-                  <div className="mt-4">
+                  <div className="mt-4 flex flex-col items-center gap-3">
+                     <p className="text-[10px] text-slate-500 uppercase tracking-widest max-w-[200px] leading-tight">
+                        {lang === 'en' ? 'Warning: Do not click the button below if you want to play again with this host.' : 'Peringatan: Jangan klik tombol di bawah jika masih ingin main lagi bareng host ini.'}
+                     </p>
                      <Button 
                        variant="danger" 
                        size="sm" 
+                       className="w-full max-w-[200px]"
                        onClick={async () => {
                           if (me) await supabase.from('players').delete().eq('id', me.id);
                           router.push('/');
