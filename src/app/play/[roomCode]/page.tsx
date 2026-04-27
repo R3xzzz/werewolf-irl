@@ -67,6 +67,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
   const [rulesOpen, setRulesOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [kicked, setKicked] = useState(false);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [currentPopup, setCurrentPopup] = useState<GamePopupEvent | null>(null);
 
   const onPopup = useCallback((popup: GamePopupEvent) => {
@@ -184,6 +185,20 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
     } finally {
        setIsCastingVote(false);
     }
+   };
+
+   const handleLeave = async () => {
+      try {
+        if (playerId) {
+          await supabase.from('players').delete().eq('id', playerId);
+        }
+        clearPlayer();
+        router.push('/');
+      } catch (e) {
+        console.error("Error leaving room:", e);
+        clearPlayer();
+        router.push('/');
+      }
    };
 
   const handleAlphaWolfConvert = async (targetId: string) => {
@@ -390,21 +405,29 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
       <div className="flex justify-between items-center mb-8 pb-4 border-b border-white/10">
          <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-xs text-slate-400 uppercase tracking-wider">Player</h2>
-              <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
-                {lang.toUpperCase()}
-              </button>
-              <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">
-                i
-              </button>
+               <h2 className="text-xs text-slate-400 uppercase tracking-wider">Player</h2>
+               <button onClick={toggleLang} className="text-[10px] bg-white/10 px-2 py-0.5 rounded cursor-pointer hover:bg-white/20 transition">
+                 {lang.toUpperCase()}
+               </button>
+               <button onClick={() => setRulesOpen(true)} className="text-[10px] bg-moon-900/50 text-moon-400 border border-moon-400/30 px-2 py-0.5 rounded cursor-pointer hover:bg-moon-800 transition flex items-center justify-center font-bold">
+                 i
+               </button>
             </div>
             <p className="font-bold text-lg">{me.name}</p>
          </div>
-         <div className="text-right">
-            <h2 className="text-xs text-slate-400 uppercase tracking-wider">Status</h2>
-            <p className={`font-bold text-lg ${me.alive ? 'text-moon-400' : 'text-wolf-500'}`}>
-              {me.alive ? (lang === 'en' ? 'ALIVE' : 'HIDUP') : (lang === 'en' ? 'DEAD' : 'MATI')}
-            </p>
+         <div className="text-right flex flex-col items-end">
+            <button 
+               onClick={() => setLeaveModalOpen(true)} 
+               className="text-[10px] bg-wolf-950/50 text-wolf-500 border border-wolf-500/30 px-2 py-0.5 rounded cursor-pointer hover:bg-wolf-900 transition font-bold mb-1"
+            >
+               EXIT
+            </button>
+            <div>
+               <h2 className="text-xs text-slate-400 uppercase tracking-wider">Status</h2>
+               <p className={`font-bold text-lg ${me.alive ? 'text-moon-400' : 'text-wolf-500'}`}>
+                  {me.alive ? (lang === 'en' ? 'ALIVE' : 'HIDUP') : (lang === 'en' ? 'DEAD' : 'MATI')}
+               </p>
+            </div>
          </div>
       </div>
 
@@ -696,6 +719,35 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
       </div>
 
       <RulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
+
+       <AnimatePresence>
+          {leaveModalOpen && (
+             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                <motion.div 
+                   initial={{ scale: 0.9, opacity: 0 }}
+                   animate={{ scale: 1, opacity: 1 }}
+                   exit={{ scale: 0.9, opacity: 0 }}
+                   className="bg-forest-950 p-6 rounded-2xl border border-white/10 max-w-sm w-full text-center shadow-2xl"
+                >
+                   <div className="text-3xl mb-4">🚪</div>
+                   <h3 className="text-xl font-serif text-white mb-2">
+                      {lang === 'en' ? 'Leave Room?' : 'Keluar Room?'}
+                   </h3>
+                   <p className="text-slate-400 text-sm mb-6">
+                      {lang === 'en' ? 'Are you sure you want to leave? Your progress will be lost.' : 'Kamu yakin mau keluar? Data permainan kamu akan dihapus dari room ini.'}
+                   </p>
+                   <div className="flex gap-3">
+                      <Button variant="secondary" className="flex-1 h-12" onClick={() => setLeaveModalOpen(false)}>
+                         {lang === 'en' ? 'Cancel' : 'Batal'}
+                      </Button>
+                      <Button variant="danger" className="flex-1 h-12" onClick={handleLeave}>
+                         {lang === 'en' ? 'Leave' : 'Keluar'}
+                      </Button>
+                   </div>
+                </motion.div>
+             </div>
+          )}
+       </AnimatePresence>
     </div>
   );
 }

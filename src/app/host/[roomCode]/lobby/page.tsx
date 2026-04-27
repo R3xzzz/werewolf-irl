@@ -32,6 +32,22 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
     }
   }, [room?.phase, router, roomCode]);
 
+  useEffect(() => {
+    if (!room || playersLoading) return;
+    
+    // Count only "pure" players (not host)
+    const purePlayerCount = players.filter(p => !p.is_host).length;
+    
+    if (room.host_name && room.host_name.includes('Pemain:')) {
+      const newHostName = room.host_name.replace(/Pemain: \d+/, `Pemain: ${purePlayerCount}`);
+      
+      // Only update if it actually changed to avoid infinite loops
+      if (newHostName !== room.host_name) {
+        supabase.from('rooms').update({ host_name: newHostName }).eq('id', room.id).then();
+      }
+    }
+  }, [players.length, room, playersLoading]);
+
   // Minimum 4 players required
   const canStart = players.filter(p => !p.is_host).length >= 4 || (room && room.code === 'TEST'); // allowing TEST code for debug without 4 players
 

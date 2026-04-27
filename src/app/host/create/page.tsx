@@ -32,6 +32,8 @@ export default function CreateRoomPage() {
     setLoading(true);
     setError(null);
     const code = generateRoomCode();
+    const startTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
+    const moderatorName = `[MODERATOR] (Pemain: 0, Mulai: ${startTime})`;
 
     try {
       // Background Cleanup: Auto-delete abandoned rooms older than 24 hours
@@ -48,7 +50,7 @@ export default function CreateRoomPage() {
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')
         .insert([
-          { code, host_name: '[MODERATOR]', phase: 'lobby' }
+          { code, host_name: moderatorName, phase: 'lobby' }
         ])
         .select()
         .single();
@@ -59,7 +61,7 @@ export default function CreateRoomPage() {
       const { data: playerData, error: playerError } = await supabase
         .from('players')
         .insert([
-          { room_id: roomData.id, name: '[MODERATOR]', is_host: true, role: 'host', team: 'host' }
+          { room_id: roomData.id, name: moderatorName, is_host: true, role: 'host', team: 'host' }
         ])
         .select()
         .single();
@@ -67,7 +69,7 @@ export default function CreateRoomPage() {
       if (playerError) throw playerError;
 
       // Save identity locally
-      setPlayer(playerData.id, code, '[MODERATOR]');
+      setPlayer(playerData.id, code, moderatorName);
 
       // Redirect to host lobby
       router.push(`/host/${code}/lobby`);
