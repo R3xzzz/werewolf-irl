@@ -25,8 +25,18 @@ export default function JoinRoomPage() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const codeParam = urlParams.get('code');
+      const nameParam = urlParams.get('name');
+      const isAdminFlow = urlParams.get('admin') === 'true';
+
       if (codeParam) {
         setRoomCode(codeParam.toUpperCase());
+      }
+      
+      if (isAdminFlow && nameParam === 'Admin') {
+        const isAdmin = localStorage.getItem('isAdmin') === 'true';
+        if (isAdmin) {
+          setPlayerName('Admin');
+        }
       }
     }
   }, []);
@@ -55,69 +65,102 @@ export default function JoinRoomPage() {
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!playerName.trim() || !roomCode.trim()) return;
+    if (!playerName.trim() || !roomCode.trim() || loading) return;
 
     setLoading(true);
     setError(null);
     const upperCode = roomCode.trim().toUpperCase();
+    const rawName = playerName.trim();
+
+    // Advanced Normalization Utility
+    const normalize = (name: string) => {
+      return name
+        .normalize('NFKD')               // Handle unicode spoofing
+        .replace(/[\u0300-\u036f]/g, '') // Remove accents/diacritics
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')       // Strip symbols and spaces completely
+        .trim();
+    };
+
+    const normalizedInput = normalize(rawName);
+    const isTryingToBeAdmin = normalizedInput === 'admin';
+
+    // Verify Real Admin Authorization
+    const adminSecret = typeof window !== 'undefined' ? localStorage.getItem('adminSecret') : null;
+    const isRealAdmin = adminSecret === process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
+
+    // 1. Reserved Name Protection
+    if (isTryingToBeAdmin && !isRealAdmin) {
+      setError(lang === 'en' ? "🚫 Admin name is protected" : "🚫 Nama Admin diproteksi");
+      setLoading(false);
+      return;
+    }
 
     try {
-      // 1. Verify Room Exists
+      // 2. Verify Room Exists
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')
         .select('*')
         .eq('code', upperCode)
         .single();
 
-      if (roomError || !roomData) throw new Error(lang === 'en' ? "Room not found. Check the code." : "Room tidak ditemukan. Cek kodenya lagi.");
+      if (roomError || !roomData) throw new Error(lang === 'en' ? "Room not found" : "Room tidak ditemukan");
+      if (roomData.phase !== 'lobby') throw new Error(lang === 'en' ? "Game already started" : "Game sudah dimulai");
 
-      if (roomData.phase !== 'lobby') {
-        throw new Error(lang === 'en' ? "Game has already started." : "Game sudah dimulai.");
-      }
-
-
+      // 3. Duplicate Detection (Normalized)
       const { data: existingPlayers, error: checkError } = await supabase
         .from('players')
         .select('*')
-        .eq('room_id', roomData.id)
-        .ilike('name', playerName.trim());
+        .eq('room_id', roomData.id);
 
       if (checkError) throw checkError;
+
+      // Check if normalized name exists
+      const conflictPlayer = existingPlayers?.find(p => normalize(p.name) === normalizedInput);
+
+      if (conflictPlayer) {
+        // ADMIN EXCEPTION: Real Admin always has priority over impostors
+        if (isRealAdmin && isTryingToBeAdmin) {
+          // Boot the impostor
+          await supabase.from('players').delete().eq('id', conflictPlayer.id);
+        } else if (conflictPlayer.id !== playerId) {
+          // Regular user duplicate conflict
+          throw new Error(lang === 'en' ? "⚠ This name is already taken" : "⚠ Nama sudah dipakai");
+        }
+      }
       
       let finalPlayerId = '';
 
-      if (existingPlayers && existingPlayers.length > 0) {
-        const p = existingPlayers[0];
-        // Reconnect flow: If same ID, allow. Otherwise block duplicate.
-        if (p.id === playerId) {
-           finalPlayerId = p.id;
-        } else {
-           throw new Error(lang === 'en' ? "This name is already taken in this room." : "Nama sudah digunakan di room ini.");
-        }
+      // If we are re-joining our own session in the same room
+      const myPreviousSession = existingPlayers?.find(p => p.id === playerId);
+      
+      if (myPreviousSession) {
+        finalPlayerId = myPreviousSession.id;
+        // Update name if changed (e.g. from Admin to admin or vice versa by the real admin)
+        await supabase.from('players').update({ name: rawName }).eq('id', finalPlayerId);
       } else {
-        // 3. Join the Room as a new Player
-        const { data: playerData, error: playerInsertError } = await supabase
+        // Join as new player
+        const { data: newPlayer, error: joinError } = await supabase
           .from('players')
-          .insert([
-            { room_id: roomData.id, name: playerName.trim() }
-          ])
+          .insert([{
+            room_id: roomData.id,
+            name: rawName,
+            is_host: false,
+            role: 'unassigned'
+          }])
           .select()
           .single();
 
-        if (playerInsertError) {
-          if (playerInsertError.code === '23505') throw new Error(lang === 'en' ? "That name is already taken." : "Nama itu sudah dipakai.");
-          throw playerInsertError;
-        }
-        finalPlayerId = playerData.id;
+        if (joinError) throw joinError;
+        finalPlayerId = newPlayer.id;
       }
 
       // Save identity locally
-      setPlayer(finalPlayerId, upperCode, playerName.trim());
+      setPlayer(finalPlayerId, upperCode, rawName);
 
-      // Redirect to player waiting screen
+      // Redirect to player screen
       router.push(`/play/${upperCode}`);
     } catch (err: any) {
-      // Intentionally not using console.error to avoid Next.js dev overlay for expected validation errors
       setError(err.message || (lang === 'en' ? 'Failed to join room.' : 'Gagal gabung ke room.'));
       setLoading(false);
     }

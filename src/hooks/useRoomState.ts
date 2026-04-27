@@ -13,8 +13,10 @@ export function useRoomState(roomCode: string | null) {
     }
 
     let isMounted = true;
+    let subscription: any = null;
 
     // Initial fetch
+
     const fetchRoom = async () => {
       try {
         const { data, error } = await supabase
@@ -27,12 +29,37 @@ export function useRoomState(roomCode: string | null) {
         if (isMounted) {
           setRoom(data);
           setLoading(false);
+          
+          // Subscribe to changes using ID so DELETE events are caught (PK is always in payload)
+          const sub = supabase
+            .channel(`room:${data.id}`)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'rooms',
+                filter: `id=eq.${data.id}`
+              },
+              (payload) => {
+                if (isMounted) {
+                  if (payload.eventType === 'DELETE') {
+                    setRoom(null);
+                    setError("Room has been closed.");
+                  } else {
+                    setRoom(payload.new as Room);
+                  }
+                }
+              }
+            )
+            .subscribe();
+            
+          subscription = sub;
         }
       } catch (err: any) {
         if (isMounted) {
-          // If room not found or fatal error, redirect to main site
-          window.location.href = 'https://werewolfirl.my.id/';
           setError(err.message || "Room not found");
+          setRoom(null);
           setLoading(false);
         }
       }
@@ -40,34 +67,11 @@ export function useRoomState(roomCode: string | null) {
 
     fetchRoom();
 
-    // Subscribe to changes
-    const subscription = supabase
-      .channel(`room:${roomCode}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'rooms',
-          filter: `code=eq.${roomCode}`
-        },
-        (payload) => {
-          if (isMounted) {
-            if (payload.eventType === 'DELETE') {
-              window.location.href = 'https://werewolfirl.my.id/';
-              setRoom(null);
-              setError("Room has been closed by the host.");
-            } else {
-              setRoom(payload.new as Room);
-            }
-          }
-        }
-      )
-      .subscribe();
-
     return () => {
       isMounted = false;
-      supabase.removeChannel(subscription);
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
     };
   }, [roomCode]);
 

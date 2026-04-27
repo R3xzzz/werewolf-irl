@@ -10,6 +10,7 @@ import { usePlayers } from "../../../../hooks/usePlayers";
 import { supabase } from "../../../../lib/supabase";
 import { getAutoBalancedRoles, GameMode } from "../../../../lib/gameLogic";
 import { getAllRoles } from "../../../../lib/roles";
+import { useLangStore } from "../../../../store/useLangStore";
 
 export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: string }> }) {
   const resolvedParams = use(params);
@@ -18,6 +19,7 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
 
   const { room, loading: roomLoading, error } = useRoomState(roomCode);
   const { players, loading: playersLoading, setPlayers } = usePlayers(room?.id);
+  const { lang } = useLangStore();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mode, setMode] = useState<GameMode>('casual');
@@ -136,7 +138,17 @@ export default function HostLobbyPage({ params }: { params: Promise<{ roomCode: 
   };
 
   if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-  if (error || !room) return <div className="min-h-screen flex items-center justify-center text-wolf-500">Error: {error}</div>;
+  if (error || !room) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6 bg-forest-950">
+        <h2 className="text-3xl font-serif text-wolf-400 mb-4">{lang === 'en' ? 'Room Closed' : 'Room Ditutup'}</h2>
+        <p className="text-slate-400 mb-8">{lang === 'en' ? 'This room no longer exists.' : 'Room ini sudah tidak ada atau telah dihapus.'}</p>
+        <Button onClick={() => router.push('/')}>
+          {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
+        </Button>
+      </div>
+    );
+  }
 
   const actualPlayers = players.filter(p => !p.is_host);
 

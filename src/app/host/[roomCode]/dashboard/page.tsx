@@ -494,7 +494,17 @@ export default function HostDashboardPage({ params }: { params: Promise<{ roomCo
    };
 
    if (roomLoading || playersLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-   if (!room) return <div>Room not found</div>;
+   if (!room) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6 bg-black">
+        <h2 className="text-3xl font-serif text-wolf-400 mb-4">{lang === 'en' ? 'Room Terminated' : 'Room Dihentikan'}</h2>
+        <p className="text-slate-400 mb-8">{lang === 'en' ? 'This session has been closed by the administrator.' : 'Sesi ini telah dihentikan oleh administrator.'}</p>
+        <Button onClick={() => router.push('/')}>
+          {lang === 'en' ? 'Back to Main Menu' : 'Kembali ke Menu Utama'}
+        </Button>
+      </div>
+    );
+  }
 
    return (
       <div className="min-h-screen bg-black text-white p-4 md:p-8 flex flex-col items-center">
