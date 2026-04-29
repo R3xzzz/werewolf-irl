@@ -163,6 +163,7 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
         return lang === 'en' ? "Discuss and find the wolves!" : "Diskusi & temukan Serigalanya!";
      }
      if (room.phase === 'voting') return lang === 'en' ? "It's time to vote! Tap a player below to cast your vote." : "Waktunya memilih! Sentuh nama pemain di bawah untuk memvote.";
+     if (room.phase === 'hunter_revenge') return lang === 'en' ? "TAKE YOUR REVENGE! Choose one person to die with you." : "BALAS DENDAM! Pilih satu orang untuk mati bersamamu.";
      if (room.phase === 'ended') return lang === 'en' ? "The game has ended." : "Permainan telah berakhir.";
      return "";
   };
@@ -584,6 +585,31 @@ export default function PlayerScreenPage({ params }: { params: Promise<{ roomCod
                           </Button>
                        </div>
                     )}
+                 </motion.div>
+              )}
+
+              {/* Hunter Revenge Block */}
+              {room.phase === 'hunter_revenge' && me.role === 'hunter' && (
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto mb-8 bg-wolf-900/50 border border-wolf-500/30 p-4 rounded-xl">
+                    <h3 className="font-serif text-lg mb-4 text-wolf-200 border-b border-wolf-500/10 pb-2">
+                       {lang === 'en' ? 'Take someone with you!' : 'Bawa seseorang bersamamu!'}
+                    </h3>
+                    <ul className="space-y-2">
+                       {alivePlayers.map(p => {
+                          const isSelected = me.action_target_id === p.id;
+                          return (
+                             <li key={p.id}>
+                                <button
+                                   onClick={() => castNightAction(p.id)}
+                                   className={`w-full p-3 rounded-lg flex justify-between items-center transition-all ${isSelected ? 'bg-wolf-700 border border-wolf-400 scale-[1.02]' : 'bg-forest-950 border border-white/5 hover:border-wolf-400/50'}`}
+                                >
+                                   <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                   {isSelected && <span className="text-xs uppercase tracking-widest text-wolf-200">{lang === 'en' ? 'Targeted' : 'Ditargetkan'}</span>}
+                                </button>
+                             </li>
+                          )
+                       })}
+                    </ul>
                  </motion.div>
               )}
 
